@@ -34,6 +34,8 @@ Each tool uses a required `action` field instead of exposing dozens of endpoint-
 - `v0.1.3`: Removes unrelated config noise and keeps the plugin focused on MCP capabilities
 - `v0.1.2`: Merges MCP tool config into one entry and adds dual-path fallback for more reliable loading
 
+See full history in [CHANGELOG.md](./CHANGELOG.md).
+
 ## High-Risk Actions
 
 The server instructions require explicit user confirmation before these actions are called:

@@ -34,6 +34,8 @@
 - `v0.1.3`：精简无关配置项，减少干扰，插件行为更聚焦 MCP 能力
 - `v0.1.2`：合并 MCP 工具配置入口，支持双路径回退，配置读取更稳定
 
+完整历史请见 [CHANGELOG.md](./CHANGELOG.md)。
+
 ## 高危 Action
 
 服务端 instructions 要求在调用以下 action 前先向用户明确说明并等待确认：
