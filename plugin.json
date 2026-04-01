@@ -12,8 +12,8 @@
     "zh_CN": "思源 MCP sisyphus"
   },
   "description": {
-    "default": "A SiYuan MCP server plugin: 41 API endpoints collapsed into 5 aggregated tools, with three-tier permission guards and high-risk action confirmation.",
-    "zh_CN": "为思源笔记打造的 MCP 服务器插件，以渐进式披露收敛 41 个端点为 5 个聚合工具，内置三级权限模型与高危操作确认机制。"
+    "default": "SiYuan MCP server with notebook-level permissions, full search/read/write, and emoji icon support for notebooks and documents.",
+    "zh_CN": "思源 MCP 服务器，支持笔记本级权限管控、全文搜索与读写操作，还能为笔记本和文档设置 emoji 图标。"
   },
   "readme": {
     "default": "README.md",

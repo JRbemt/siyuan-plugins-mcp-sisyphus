@@ -82,6 +82,7 @@ export const NotebookListSchema = z.object({
 export const NotebookCreateSchema = z.object({
     action: z.literal("create"),
     name: z.string().describe("Notebook name"),
+    icon: z.string().optional().describe("Optional icon for the notebook, e.g., '1f4d4' for 📔"),
 });
 
 export const NotebookOpenSchema = z.object({
@@ -116,6 +117,12 @@ export const NotebookSetConfSchema = z.object({
     conf: NotebookConfSchema.describe("Notebook configuration"),
 });
 
+export const NotebookSetIconSchema = z.object({
+    action: z.literal("set_icon"),
+    notebook: z.string().describe("Notebook ID"),
+    icon: z.string().describe("Icon value, e.g., '1f4d4' for 📔 or custom icon path"),
+});
+
 export const NotebookGetPermissionsSchema = z.object({
     action: z.literal("get_permissions"),
 });
@@ -136,6 +143,7 @@ export const DocumentCreateSchema = z.object({
     notebook: z.string().describe("Notebook ID"),
     path: z.string().describe("Human-readable target path, must start with / (e.g., /foo/bar). Parent paths must already exist."),
     markdown: z.string().describe("Markdown content"),
+    icon: z.string().optional().describe("Optional icon for the document, e.g., '1f4d4' for 📔"),
 });
 
 export const DocumentRenameSchema = z.object({
@@ -174,6 +182,12 @@ export const DocumentGetChildBlocksSchema = z.object({
 export const DocumentGetChildDocsSchema = z.object({
     action: z.literal("get_child_docs"),
     id: z.string().describe("Document ID"),
+});
+
+export const DocumentSetIconSchema = z.object({
+    action: z.literal("set_icon"),
+    id: z.string().describe("Document ID"),
+    icon: z.string().describe("Icon value, e.g., '1f4d4' for 📔 or custom icon path"),
 });
 
 export const BlockInsertSchema = z.object({

@@ -34,6 +34,7 @@ export const FILE_GUIDANCE: string[] = [
 
 export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
     remove: 'This action requires explicit user confirmation.',
+    set_icon: 'Use a notebook ID + icon (e.g., "1f4d4" for 📔).',
     get_child_docs: 'Use a notebook ID. Returns direct child documents at the notebook root.',
 };
 
@@ -46,6 +47,7 @@ export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     get_ids: 'Use notebook + path, where path is human-readable (same format as action="create").',
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
     get_child_docs: 'Use a document ID. Returns direct child documents only.',
+    set_icon: 'Use a document ID + icon (e.g., "1f4d4" for 📔).',
 };
 
 export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {

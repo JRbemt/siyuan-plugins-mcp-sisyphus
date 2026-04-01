@@ -61,7 +61,7 @@ export const SEARCH_VARIANTS: ActionVariant<SearchAction>[] = [
 export function listSearchTools(config: CategoryToolConfig<SearchAction>) {
     return buildAggregatedTool(
         SEARCH_TOOL_NAME,
-        'Grouped search and query operations.',
+        '🔍 Grouped search and query operations.',
         config,
         SEARCH_VARIANTS,
         {

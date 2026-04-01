@@ -1,5 +1,5 @@
 import { SiYuanClient } from './client';
-import type { Notebook, NotebookConf, IReslsNotebooks, IResCreateNotebook, IResGetNotebookConf, IResSetNotebookConf } from '../types/api';
+import type { Notebook, NotebookConf, IReslsNotebooks, IResCreateNotebook, IResGetNotebookConf, IResSetNotebookConf, IReqSetNotebookIcon } from '../types/api';
 
 /**
  * List all notebooks
@@ -55,4 +55,11 @@ export async function getNotebookConf(client: SiYuanClient, notebook: string): P
  */
 export async function setNotebookConf(client: SiYuanClient, notebook: string, conf: NotebookConf): Promise<IResSetNotebookConf> {
     return client.request<IResSetNotebookConf>('/api/notebook/setNotebookConf', { notebook, conf });
+}
+
+/**
+ * Set notebook icon
+ */
+export async function setNotebookIcon(client: SiYuanClient, notebook: string, icon: string): Promise<null> {
+    return client.request<null>('/api/notebook/setNotebookIcon', { notebook, icon } as IReqSetNotebookIcon);
 }

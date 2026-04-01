@@ -128,7 +128,7 @@ export const BLOCK_VARIANTS: ActionVariant<BlockAction>[] = [
 export function listBlockTools(config: CategoryToolConfig<BlockAction>) {
     return buildAggregatedTool(
         BLOCK_TOOL_NAME,
-        'Grouped block operations.',
+        '🧱 Grouped block operations.',
         config,
         BLOCK_VARIANTS,
         {

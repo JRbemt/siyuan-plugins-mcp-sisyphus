@@ -15,6 +15,7 @@ import {
     NotebookRemoveSchema,
     NotebookRenameSchema,
     NotebookSetConfSchema,
+    NotebookSetIconSchema,
     NotebookSetPermissionSchema,
 } from '../types';
 import { ensurePermissionForNotebook, listChildDocumentsByPath } from './context';
@@ -31,6 +32,7 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
         action: 'create',
         schema: createActionSchema('create', {
             name: { type: 'string', description: 'Notebook name' },
+            icon: { type: 'string', description: 'Optional icon for the notebook, e.g., "1f4d4" for 📔' },
         }, ['name'], 'Create a new notebook.'),
     },
     {
@@ -83,6 +85,13 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
         }, ['notebook', 'conf'], 'Set notebook configuration.'),
     },
     {
+        action: 'set_icon',
+        schema: createActionSchema('set_icon', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+            icon: { type: 'string', description: 'Icon value, e.g., "1f4d4" for 📔 or custom icon path' },
+        }, ['notebook', 'icon'], 'Set the icon for a notebook.'),
+    },
+    {
         action: 'get_permissions',
         schema: createActionSchema('get_permissions', {}, [], 'Get permission levels for all notebooks. Returns each notebook with its permission: "write" (full access, default), "readonly" (read only), or "none" (no access).'),
     },
@@ -108,7 +117,7 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
 export function listNotebookTools(config: CategoryToolConfig<NotebookAction>) {
     return buildAggregatedTool(
         NOTEBOOK_TOOL_NAME,
-        'Grouped notebook operations.',
+        '📚 Grouped notebook operations.',
         config,
         NOTEBOOK_VARIANTS,
         {
@@ -142,6 +151,10 @@ export async function callNotebookTool(
             case 'create': {
                 const parsed = NotebookCreateSchema.parse(rawArgs);
                 const result = await notebookApi.createNotebook(client, parsed.name);
+                if (parsed.icon) {
+                    await notebookApi.setNotebookIcon(client, result.notebook.id, parsed.icon);
+                    result.notebook.icon = parsed.icon;
+                }
                 return createJsonResult(result.notebook);
             }
             case 'open': {
@@ -185,6 +198,13 @@ export async function callNotebookTool(
                 if (denied) return denied;
                 const result = await notebookApi.setNotebookConf(client, parsed.notebook, parsed.conf);
                 return createJsonResult(result);
+            }
+            case 'set_icon': {
+                const parsed = NotebookSetIconSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
+                if (denied) return denied;
+                await notebookApi.setNotebookIcon(client, parsed.notebook, parsed.icon);
+                return createJsonResult({ success: true, notebook: parsed.notebook, icon: parsed.icon });
             }
             case 'get_permissions': {
                 NotebookGetPermissionsSchema.parse(rawArgs);

@@ -110,6 +110,11 @@ interface IReqSetNotebookConf {
     conf: NotebookConf;
 }
 
+interface IReqSetNotebookIcon {
+    notebook: string;
+    icon: string;
+}
+
 interface IResCreateNotebook {
     notebook: Notebook;
 }

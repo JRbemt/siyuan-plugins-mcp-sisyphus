@@ -44,6 +44,7 @@
 服务端 instructions 要求在调用以下 action 前先向用户明确说明并等待确认：
 
 - `notebook(action="remove")`
+- `notebook(action="set_permission")`
 - `document(action="remove")`
 - `document(action="move")`
 - `block(action="delete")`
@@ -92,173 +93,70 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 
 ### `notebook`
 
-支持的 action：
-
-- `list`
-- `create`
-- `open`
-- `close`
-- `remove`
-- `rename`
-- `get_conf`
-- `set_conf`
-- `get_permissions`
-- `set_permission`
-- `get_child_docs`
-
-示例：
-
-```json
-{
-  "name": "notebook",
-  "arguments": {
-    "action": "rename",
-    "notebook": "20210808180117-czj9bvb",
-    "name": "Research"
-  }
-}
-```
+| Action | 说明 |
+|--------|------|
+| `list` | 列出所有笔记本 |
+| `create` | 创建笔记本（支持传入 `icon`） |
+| `open` / `close` | 打开或关闭笔记本 |
+| `rename` | 重命名笔记本 |
+| `get_conf` / `set_conf` | 获取或设置笔记本配置 |
+| `set_icon` | 设置笔记本 emoji 图标 |
+| `get_permissions` | 查看所有笔记本的 MCP 权限 |
+| `set_permission` | 修改笔记本权限（`write` / `readonly` / `none`） |
+| `get_child_docs` | 获取笔记本根目录下的直属子文档 |
 
 ### `document`
 
-支持的 action：
+| Action | 说明 |
+|--------|------|
+| `create` | 创建文档，支持 Markdown 内容（支持传入 `icon`） |
+| `rename` | 重命名文档（按 ID 或存储路径） |
+| `remove` | 删除文档（按 ID 或存储路径） |
+| `move` | 移动文档（按 ID 或存储路径） |
+| `set_icon` | 设置文档/文件夹 emoji 图标 |
+| `get_path` | 按文档 ID 获取存储路径 |
+| `get_hpath` | 按 ID 或存储路径获取人类可读路径 |
+| `get_ids` | 按人类可读路径获取文档 ID |
+| `get_child_blocks` | 获取文档的直属子块 |
+| `get_child_docs` | 获取文档的直属子文档 |
 
-- `create`
-- `rename`
-- `remove`
-- `move`
-- `get_path`
-- `get_hpath`
-- `get_ids`
-- `get_child_blocks`
-- `get_child_docs`
-
-路径语义：
-
-- `create.path` 是人类可读目标路径，例如 `/Inbox/Weekly Note`
-- 当 `rename`、`remove`、`move`、`get_hpath` 使用 `notebook + path` 形态时，`path` 是存储路径
-- `get_path` 负责把 `id -> 存储路径`
-- `get_hpath` 和 `get_ids` 负责在人类可读层级路径与存储路径/ID 之间转换
-- `get_child_blocks` 负责按文档 ID 获取直属子块
-- `get_child_docs` 负责按文档 ID 获取直属子文档
-
-`create` 不会自动补齐缺失的父路径。更稳妥的做法是在笔记本根路径创建，或只写到已存在的父路径下。
-
-其中 `rename`、`remove`、`move`、`get_hpath` 支持多种参数形态。例如 `rename` 可以使用 `id + title`，也可以使用 `notebook + path + title`。
-
-示例：
-
-```json
-{
-  "name": "document",
-  "arguments": {
-    "action": "rename",
-    "id": "20240318112233-abc123",
-    "title": "Weekly Notes"
-  }
-}
-```
-
-获取笔记本根目录直属子文档：
-
-```json
-{
-  "name": "notebook",
-  "arguments": {
-    "action": "get_child_docs",
-    "notebook": "20210808180117-czj9bvb"
-  }
-}
-```
+路径语义：`create` 与 `get_ids` 使用人类可读路径（如 `/Inbox/Weekly Note`）。`rename`、`remove`、`move`、`get_hpath` 支持按 `id` 或 `notebook + 存储路径` 两种形态调用。
 
 ### `block`
 
-支持的 action：
-
-- `insert`
-- `prepend`
-- `append`
-- `update`
-- `delete`
-- `move`
-- `fold`
-- `unfold`
-- `get_kramdown`
-- `get_children`
-- `transfer_ref`
-- `set_attrs`
-- `get_attrs`
-
-`prepend` 传文档 ID 时会插入到文档开头，`append` 传文档 ID 时会插入到文档末尾。传块 ID 时，这两个 action 操作的是该块的子块列表。
-
-`fold` 和 `unfold` 应传可折叠块 ID。
-
-示例：
-
-```json
-{
-  "name": "block",
-  "arguments": {
-    "action": "append",
-    "dataType": "markdown",
-    "data": "- New item",
-    "parentID": "20240318112233-abc123"
-  }
-}
-```
+| Action | 说明 |
+|--------|------|
+| `insert` / `prepend` / `append` | 插入块到指定位置/开头/末尾 |
+| `update` | 更新块内容 |
+| `delete` | 删除块 |
+| `move` | 移动块到新位置 |
+| `fold` / `unfold` | 折叠/展开可折叠块 |
+| `get_kramdown` | 获取块的 kramdown 格式内容 |
+| `get_children` | 获取直属子块 |
+| `transfer_ref` | 转移块引用 |
+| `set_attrs` / `get_attrs` | 设置或获取块属性 |
 
 ### `file`
 
-支持的 action：
-
-- `upload_asset`
-- `render_template`
-- `render_sprig`
-- `export_md`
-- `export_resources`
-- `push_msg`
-- `push_err_msg`
-- `get_version`
-- `get_current_time`
-
-示例：
-
-```json
-{
-  "name": "file",
-  "arguments": {
-    "action": "get_version"
-  }
-}
-```
+| Action | 说明 |
+|--------|------|
+| `upload_asset` | 上传资源文件 |
+| `render_template` | 使用文档上下文渲染模板 |
+| `render_sprig` | 渲染 Sprig 模板 |
+| `export_md` | 导出文档为 Markdown |
+| `export_resources` | 导出资源为 ZIP 压缩包 |
+| `push_msg` / `push_err_msg` | 推送普通/错误通知消息 |
+| `get_version` / `get_current_time` | 获取思源版本号或当前时间 |
 
 ### `search`
 
-支持的 action：
-
-- `fulltext`
-- `query_sql`
-- `search_tag`
-- `get_backlinks`
-- `get_backmentions`
-
-所有 search action 均为只读操作。`query_sql` 仅允许 SELECT 和 WITH 语句，会拒绝任何数据变更操作。
-
-`fulltext` 支持关键词、查询语法、SQL、正则四种搜索模式，通过 `method` 参数切换。
-
-`get_backlinks` 返回引用了指定块的文档/块。`get_backmentions` 返回提及了指定块名称的文档/块。
-
-示例：
-
-```json
-{
-  "name": "search",
-  "arguments": {
-    "action": "query_sql",
-    "stmt": "SELECT * FROM blocks WHERE content LIKE '%关键词%' LIMIT 20"
-  }
-}
-```
+| Action | 说明 |
+|--------|------|
+| `fulltext` | 全文搜索 |
+| `query_sql` | 执行只读 SQL（仅允许 SELECT / WITH） |
+| `search_tag` | 按关键词搜索标签 |
+| `get_backlinks` | 查找引用了指定块的文档/块 |
+| `get_backmentions` | 查找提及了指定块名称的文档/块 |
 
 ## 工具开关
 

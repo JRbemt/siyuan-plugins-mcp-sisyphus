@@ -44,6 +44,7 @@ See full history in [CHANGELOG.md](./CHANGELOG.md).
 The server instructions require explicit user confirmation before these actions are called:
 
 - `notebook(action="remove")`
+- `notebook(action="set_permission")`
 - `document(action="remove")`
 - `document(action="move")`
 - `block(action="delete")`
@@ -92,173 +93,70 @@ OpenClaw / mcporter users can follow [SKILL.md](https://github.com/yangtaihong59
 
 ### `notebook`
 
-Actions:
-
-- `list`
-- `create`
-- `open`
-- `close`
-- `remove`
-- `rename`
-- `get_conf`
-- `set_conf`
-- `get_permissions`
-- `set_permission`
-- `get_child_docs`
-
-Example:
-
-```json
-{
-  "name": "notebook",
-  "arguments": {
-    "action": "rename",
-    "notebook": "20210808180117-czj9bvb",
-    "name": "Research"
-  }
-}
-```
+| Action | Description |
+|--------|-------------|
+| `list` | List all notebooks |
+| `create` | Create a new notebook (supports `icon`) |
+| `open` / `close` | Open or close a notebook |
+| `rename` | Rename a notebook |
+| `get_conf` / `set_conf` | Get or set notebook configuration |
+| `set_icon` | Set notebook emoji icon |
+| `get_permissions` | List all notebook permission levels |
+| `set_permission` | Change notebook MCP permission (`write` / `readonly` / `none`) |
+| `get_child_docs` | Get direct child documents at notebook root |
 
 ### `document`
 
-Actions:
+| Action | Description |
+|--------|-------------|
+| `create` | Create a document with markdown (supports `icon`) |
+| `rename` | Rename a document by ID or storage path |
+| `remove` | Remove a document by ID or storage path |
+| `move` | Move documents by ID or storage path |
+| `set_icon` | Set document or folder emoji icon |
+| `get_path` | Get storage path by document ID |
+| `get_hpath` | Get human-readable path by ID or storage path |
+| `get_ids` | Get document IDs by human-readable path |
+| `get_child_blocks` | Get direct child blocks of a document |
+| `get_child_docs` | Get direct child documents of a document |
 
-- `create`
-- `rename`
-- `remove`
-- `move`
-- `get_path`
-- `get_hpath`
-- `get_ids`
-- `get_child_blocks`
-- `get_child_docs`
-
-Path semantics:
-
-- `create.path` is a human-readable target path such as `/Inbox/Weekly Note`
-- `rename`, `remove`, `move`, and `get_hpath` use storage paths when you choose the `notebook + path` shape
-- `get_path` converts `id -> storage path`
-- `get_hpath` and `get_ids` convert between storage paths and human-readable hierarchical paths
-- `get_child_blocks` returns direct child blocks for a document ID
-- `get_child_docs` returns direct child documents for a document ID
-
-`create` does not create missing parent paths for you. Prefer creating at notebook root or under an already existing parent path.
-
-`rename`, `remove`, `move`, and `get_hpath` support more than one argument shape. For example, `rename` can use either `id + title` or `notebook + path + title`.
-
-Example:
-
-```json
-{
-  "name": "document",
-  "arguments": {
-    "action": "rename",
-    "id": "20240318112233-abc123",
-    "title": "Weekly Notes"
-  }
-}
-```
-
-Direct child documents at notebook root:
-
-```json
-{
-  "name": "notebook",
-  "arguments": {
-    "action": "get_child_docs",
-    "notebook": "20210808180117-czj9bvb"
-  }
-}
-```
+Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/Weekly Note`). `rename`, `remove`, `move`, and `get_hpath` can use either `id` or `notebook + storage path`.
 
 ### `block`
 
-Actions:
-
-- `insert`
-- `prepend`
-- `append`
-- `update`
-- `delete`
-- `move`
-- `fold`
-- `unfold`
-- `get_kramdown`
-- `get_children`
-- `transfer_ref`
-- `set_attrs`
-- `get_attrs`
-
-`prepend` with a document ID inserts at the start of the document. `append` with a document ID inserts at the end of the document. With a block ID, both operate on that block's child list.
-
-`fold` and `unfold` should be used with foldable block IDs.
-
-Example:
-
-```json
-{
-  "name": "block",
-  "arguments": {
-    "action": "append",
-    "dataType": "markdown",
-    "data": "- New item",
-    "parentID": "20240318112233-abc123"
-  }
-}
-```
+| Action | Description |
+|--------|-------------|
+| `insert` / `prepend` / `append` | Insert a block at position, start, or end |
+| `update` | Update block content |
+| `delete` | Delete a block |
+| `move` | Move a block to a new position |
+| `fold` / `unfold` | Fold or unfold a foldable block |
+| `get_kramdown` | Get block content in kramdown format |
+| `get_children` | Get direct child blocks |
+| `transfer_ref` | Transfer block references |
+| `set_attrs` / `get_attrs` | Set or get block attributes |
 
 ### `file`
 
-Actions:
-
-- `upload_asset`
-- `render_template`
-- `render_sprig`
-- `export_md`
-- `export_resources`
-- `push_msg`
-- `push_err_msg`
-- `get_version`
-- `get_current_time`
-
-Example:
-
-```json
-{
-  "name": "file",
-  "arguments": {
-    "action": "get_version"
-  }
-}
-```
+| Action | Description |
+|--------|-------------|
+| `upload_asset` | Upload a file asset |
+| `render_template` | Render a template with document context |
+| `render_sprig` | Render a Sprig template |
+| `export_md` | Export document as Markdown |
+| `export_resources` | Export resources as ZIP |
+| `push_msg` / `push_err_msg` | Push notification or error message |
+| `get_version` / `get_current_time` | Get SiYuan version or current time |
 
 ### `search`
 
-Actions:
-
-- `fulltext`
-- `query_sql`
-- `search_tag`
-- `get_backlinks`
-- `get_backmentions`
-
-All search actions are read-only. `query_sql` only accepts SELECT and WITH statements; mutation queries are rejected.
-
-`fulltext` supports keyword, query syntax, SQL, and regex search modes via the `method` parameter.
-
-`get_backlinks` returns documents/blocks that reference the given block. `get_backmentions` returns documents/blocks that mention the given block's name.
-
-Example:
-
-```json
-{
-  "name": "search",
-  "arguments": {
-    "action": "query_sql",
-    "stmt": "SELECT * FROM blocks WHERE content LIKE '%keyword%' LIMIT 20"
-  }
-}
-```
+| Action | Description |
+|--------|-------------|
+| `fulltext` | Full-text search across blocks |
+| `query_sql` | Execute read-only SQL (SELECT / WITH only) |
+| `search_tag` | Search tags by keyword |
+| `get_backlinks` | Find documents/blocks that reference a block |
+| `get_backmentions` | Find documents/blocks that mention a block name |
 
 ## Tool Toggles
 

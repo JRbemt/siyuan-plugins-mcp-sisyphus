@@ -1,4 +1,5 @@
 import type { SiYuanClient } from '../../api/client';
+import * as attributeApi from '../../api/attribute';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
 import type { CategoryToolConfig, DocumentAction } from '../config';
@@ -15,6 +16,7 @@ import {
     DocumentMoveSchema,
     DocumentRemoveSchema,
     DocumentRenameSchema,
+    DocumentSetIconSchema,
 } from '../types';
 import {
     ensurePermissionForDocumentId,
@@ -34,6 +36,7 @@ export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
             notebook: { type: 'string', description: 'Notebook ID' },
             path: { type: 'string', description: 'Human-readable target path, must start with / (e.g., /foo/bar). Parent paths must already exist.' },
             markdown: { type: 'string', description: 'Markdown content' },
+            icon: { type: 'string', description: 'Optional icon for the document, e.g., "1f4d4" for 📔' },
         }, ['notebook', 'path', 'markdown'], 'Create a new document with markdown content.'),
     },
     {
@@ -117,12 +120,19 @@ export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
             id: { type: 'string', description: 'Document ID' },
         }, ['id'], 'Get direct child documents for a document ID.'),
     },
+    {
+        action: 'set_icon',
+        schema: createActionSchema('set_icon', {
+            id: { type: 'string', description: 'Document ID' },
+            icon: { type: 'string', description: 'Icon value, e.g., "1f4d4" for 📔 or custom icon path' },
+        }, ['id', 'icon'], 'Set the icon for a document or folder.'),
+    },
 ];
 
 export function listDocumentTools(config: CategoryToolConfig<DocumentAction>) {
     return buildAggregatedTool(
         DOCUMENT_TOOL_NAME,
-        'Grouped document operations.',
+        '📝 Grouped document operations.',
         config,
         DOCUMENT_VARIANTS,
         {
@@ -160,6 +170,9 @@ export async function callDocumentTool(
                     return createPermissionDeniedResult(parsed.notebook, permMgr.get(parsed.notebook), 'write');
                 }
                 const docId = await documentApi.createDoc(client, parsed.notebook, parsed.path, parsed.markdown);
+                if (parsed.icon) {
+                    await attributeApi.setBlockAttrs(client, docId, { icon: parsed.icon });
+                }
                 return createJsonResult({ success: true, notebook: parsed.notebook, path: parsed.path, id: docId });
             }
             case 'rename': {
@@ -292,6 +305,15 @@ export async function callDocumentTool(
                 }
                 const result = await listChildDocumentsByPath(client, context.notebook, context.path);
                 return createJsonResult(result);
+            }
+            case 'set_icon': {
+                const parsed = DocumentSetIconSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                if (denied) {
+                    return denied;
+                }
+                await attributeApi.setBlockAttrs(client, parsed.id, { icon: parsed.icon });
+                return createJsonResult({ success: true, id: parsed.id, icon: parsed.icon });
             }
             default: {
                 const _exhaustive: never = parsedAction;

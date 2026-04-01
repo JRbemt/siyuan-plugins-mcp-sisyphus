@@ -82,7 +82,7 @@ export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
 export function listFileTools(config: CategoryToolConfig<FileAction>) {
     return buildAggregatedTool(
         FILE_TOOL_NAME,
-        'Grouped file and system operations.',
+        '📁 Grouped file and system operations.',
         config,
         FILE_VARIANTS,
         {
