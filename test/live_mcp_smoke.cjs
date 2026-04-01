@@ -51,6 +51,16 @@ const ALL_ENABLED_CONFIG = {
             get_current_time: true,
         },
     },
+    search: {
+        enabled: true,
+        actions: {
+            fulltext: true,
+            query_sql: true,
+            search_tag: true,
+            get_backlinks: true,
+            get_backmentions: true,
+        },
+    },
 };
 
 function makeSiYuanResponse(data, code = 0, msg = '') {
@@ -138,7 +148,7 @@ async function assertPermissionDenied(client, name, args) {
 async function assertDefaultToolList() {
     await withConfigMode('default', async () => withClient(async (client) => {
         const tools = (await client.listTools()).tools;
-        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file']);
+        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search']);
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
         assert.match(descriptions.notebook, /list, create, open, close, rename, get_conf, set_conf, get_permissions, get_child_docs/);
@@ -156,6 +166,9 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /foldable block ID/);
         assert.match(descriptions.file, /upload_asset, render_template, render_sprig, export_md, export_resources, push_msg, push_err_msg, get_version, get_current_time/);
         assert.match(descriptions.file, /base64-encoded file payload/);
+        assert.match(descriptions.search, /fulltext, query_sql, search_tag, get_backlinks, get_backmentions/);
+        assert.match(descriptions.search, /Enabled actions: fulltext, query_sql, search_tag, get_backlinks, get_backmentions\./);
+        assert.match(descriptions.search, /read-only/i);
 
         const schemas = Object.fromEntries(tools.map((tool) => [tool.name, tool.inputSchema]));
         for (const [name, schema] of Object.entries(schemas)) {
@@ -171,6 +184,9 @@ async function assertDefaultToolList() {
         assert.ok('path' in schemas.document.properties);
         assert.ok('dataType' in schemas.block.properties);
         assert.ok('template' in schemas.file.properties);
+        assert.ok('query' in schemas.search.properties);
+        assert.ok('stmt' in schemas.search.properties);
+        assert.ok('k' in schemas.search.properties);
         assert.match(schemas.document.properties.path.description, /For action="create"/);
         assert.match(schemas.block.properties.parentID.description, /document head or tail/);
 
@@ -189,6 +205,7 @@ async function assertDefaultToolList() {
         const toolOverviewText = await readResourceText(client, 'siyuan://help/tool-overview');
         assert.match(toolOverviewText, /SiYuan MCP Tool Overview/);
         assert.match(toolOverviewText, /document\(action="move"\)/);
+        assert.match(toolOverviewText, /5 aggregated tools/);
 
         const documentPathText = await readResourceText(client, 'siyuan://help/document-path-semantics');
         assert.match(documentPathText, /Human-readable path/);
@@ -497,6 +514,47 @@ async function runLiveSmoke() {
                 timeout: 1000,
             })).json;
             assert.equal(typeof pushMsg.id, 'string');
+
+            // --- Search tool smoke tests ---
+
+            const fulltextResult = (await callToolJson(client, 'search', {
+                action: 'fulltext',
+                query: 'doc append updated',
+            })).json;
+            assert.ok('blocks' in fulltextResult || 'matchedBlockCount' in fulltextResult);
+
+            const sqlResult = (await callToolJson(client, 'search', {
+                action: 'query_sql',
+                stmt: "SELECT * FROM blocks WHERE content LIKE '%doc append updated%' LIMIT 5",
+            })).json;
+            assert.ok(Array.isArray(sqlResult));
+
+            const sqlDenied = (await callToolJson(client, 'search', {
+                action: 'query_sql',
+                stmt: 'DROP TABLE blocks',
+            })).json;
+            assert.equal(sqlDenied.error?.type, 'internal_error');
+            assert.match(sqlDenied.error?.message, /Only SELECT and WITH/);
+
+            const tagResult = (await callToolJson(client, 'search', {
+                action: 'search_tag',
+                k: '',
+            })).json;
+            assert.ok('tags' in tagResult);
+
+            const backlinks = (await callToolJson(client, 'search', {
+                action: 'get_backlinks',
+                id: source.json.id,
+            })).json;
+            assert.ok('backlinks' in backlinks);
+
+            const backmentions = (await callToolJson(client, 'search', {
+                action: 'get_backmentions',
+                id: source.json.id,
+            })).json;
+            assert.ok('backmentions' in backmentions);
+
+            console.log('Search tool smoke passed');
 
             const moveById = (await callToolJson(client, 'document', {
                 action: 'move',

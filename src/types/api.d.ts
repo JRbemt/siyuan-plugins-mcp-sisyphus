@@ -324,6 +324,54 @@ interface IResQuerySQL {
     [key: string]: unknown;
 }
 
+interface IReqFullTextSearchBlock {
+    query: string;
+    method?: number;
+    types?: Record<string, boolean>;
+    paths?: string[];
+    groupBy?: number;
+    orderBy?: number;
+    page?: number;
+    pageSize?: number;
+}
+
+interface IResFullTextSearchBlock {
+    blocks: unknown[];
+    matchedBlockCount: number;
+    matchedRootCount: number;
+    pageCount: number;
+}
+
+interface IReqSearchTag {
+    k: string;
+}
+
+interface IResSearchTag {
+    tags: string[];
+    k: string;
+}
+
+interface IReqGetBacklinkDoc {
+    defID: string;
+    refTreeID?: string;
+    keyword?: string;
+}
+
+interface IResGetBacklinkDoc {
+    backlinks: unknown[];
+    backmentions: unknown[];
+}
+
+interface IReqGetBackmentionDoc {
+    defID: string;
+    refTreeID?: string;
+    keyword?: string;
+}
+
+interface IResGetBackmentionDoc {
+    backmentions: unknown[];
+}
+
 interface IReqRenderTemplate {
     id: string;
     path: string;

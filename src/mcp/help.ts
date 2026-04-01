@@ -4,6 +4,7 @@ import {
     type DocumentAction,
     type FileAction,
     type NotebookAction,
+    type SearchAction,
     type ToolCategory,
 } from './config';
 
@@ -63,11 +64,27 @@ export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
     export_resources: 'Provide one or more existing resource paths; the result is a ZIP export.',
 };
 
+export const SEARCH_GUIDANCE: string[] = [
+    'All search actions are read-only and do not modify any data.',
+    'search(action="query_sql") only accepts SELECT statements; mutation queries will be rejected.',
+    'The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.',
+    'Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.',
+];
+
+export const SEARCH_ACTION_HINTS: Partial<Record<SearchAction, string>> = {
+    fulltext: 'Pass a query string. Supports keyword, query syntax, SQL, and regex modes via the method parameter.',
+    query_sql: 'Execute a SELECT statement. Common tables: blocks, spans, assets. Always use LIMIT to control result size. Example: SELECT * FROM blocks WHERE content LIKE \'%keyword%\' LIMIT 20.',
+    search_tag: 'Returns all tags matching the given keyword prefix.',
+    get_backlinks: 'Returns documents/blocks that contain a reference ((ref)) to the given block ID.',
+    get_backmentions: 'Returns documents/blocks that mention the name of the given block (text mention, not ref link).',
+};
+
 export const TOOL_GUIDANCE_BY_CATEGORY: Record<ToolCategory, string[]> = {
     notebook: NOTEBOOK_GUIDANCE,
     document: DOCUMENT_GUIDANCE,
     block: BLOCK_GUIDANCE,
     file: FILE_GUIDANCE,
+    search: SEARCH_GUIDANCE,
 };
 
 export const TOOL_ACTION_HINTS: Record<ToolCategory, Partial<Record<string, string>>> = {
@@ -75,6 +92,7 @@ export const TOOL_ACTION_HINTS: Record<ToolCategory, Partial<Record<string, stri
     document: DOCUMENT_ACTION_HINTS,
     block: BLOCK_ACTION_HINTS,
     file: FILE_ACTION_HINTS,
+    search: SEARCH_ACTION_HINTS,
 };
 
 export { ACTIONS_BY_CATEGORY } from './config';

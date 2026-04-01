@@ -12,8 +12,8 @@
     "zh_CN": "思源 MCP sisyphus"
   },
   "description": {
-    "default": "Let AI control your notes with a SiYuan MCP server that exposes 4 aggregated tools with action-level routing for deep AI integration.",
-    "zh_CN": "让 AI 通过思源 MCP 服务控制你的笔记。当前对外暴露 4 个聚合工具，并通过 action 路由实现深度集成。"
+    "default": "A SiYuan MCP server plugin: 41 API endpoints collapsed into 5 aggregated tools, with three-tier permission guards and high-risk action confirmation.",
+    "zh_CN": "为思源笔记打造的 MCP 服务器插件，以渐进式披露收敛 41 个端点为 5 个聚合工具，内置三级权限模型与高危操作确认机制。"
   },
   "readme": {
     "default": "README.md",

@@ -2,21 +2,23 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-思源笔记西西弗斯 MCP 服务器。现在对外只暴露 4 个聚合 tool：
+这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将原本分散的 41 个 API 端点精巧收敛为 `notebook`、`document`、`block`、`file`、`search` 五个聚合工具。配合「禁止读写 / 只读 / 读写」三级权限模型与高危操作二次确认机制，在简化 AI 调用路径的同时，为你的笔记数据筑起一道安全防线——让自动化更可靠，让权限管理更细腻。
 
 - `notebook`
 - `document`
 - `block`
 - `file`
+- `search`
 
 每个 tool 通过必填的 `action` 字段分派具体操作，不再直接暴露 41 个 endpoint 风格的 tool 名。
 
 ## 功能特性
 
 - 完整覆盖笔记本、文档、块、资源、导出和通知相关的思源 API
-- 对外工具面收缩为 4 个聚合 tool，减少模型选错 tool 的概率
+- 对外工具面收缩为 5 个聚合 tool，减少模型选错 tool 的概率
 - 插件设置仍保留到 action 级别的开关。默认 fallback 配置里，删除类 action 不暴露，移动类 action 仍暴露但必须先确认。
 - 支持按笔记本 / 文档查询直属子文档与直属子块
+- 支持全文搜索、SQL 查询、标签搜索、反向链接与反向提及查询
 - 权限校验会先解析块 / 文档所属笔记本，再决定是否允许读写
 
 ## 权限模型
@@ -25,10 +27,11 @@
 - `readonly`：只允许读，所有文档/块写操作都应被拒绝
 - `none`：禁止所有读写
 - `notebook(action="set_permission")` 设置后，会立即影响后续的 `notebook`、`document`、`block` 调用
-- AI 做回归时，建议一开始先把 4 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
+- AI 做回归时，建议一开始先把 5 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
 
 ## 版本时间线
 
+- `v0.1.6`：新增 `search` 聚合 tool，支持全文搜索、SQL 查询、标签搜索、反向链接与反向提及
 - `v0.1.5`：对外 MCP 工具面收敛为 4 个聚合 tool，并新增笔记本级权限守卫与高危 action 确认约束
 - `v0.1.4`：首次安装插件时自动生成 MCP 配置文件，开箱即可连接客户端
 - `v0.1.3`：精简无关配置项，减少干扰，插件行为更聚焦 MCP 能力
@@ -225,6 +228,34 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
   "name": "file",
   "arguments": {
     "action": "get_version"
+  }
+}
+```
+
+### `search`
+
+支持的 action：
+
+- `fulltext`
+- `query_sql`
+- `search_tag`
+- `get_backlinks`
+- `get_backmentions`
+
+所有 search action 均为只读操作。`query_sql` 仅允许 SELECT 和 WITH 语句，会拒绝任何数据变更操作。
+
+`fulltext` 支持关键词、查询语法、SQL、正则四种搜索模式，通过 `method` 参数切换。
+
+`get_backlinks` 返回引用了指定块的文档/块。`get_backmentions` 返回提及了指定块名称的文档/块。
+
+示例：
+
+```json
+{
+  "name": "search",
+  "arguments": {
+    "action": "query_sql",
+    "stmt": "SELECT * FROM blocks WHERE content LIKE '%关键词%' LIMIT 20"
   }
 }
 ```

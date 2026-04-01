@@ -14,6 +14,7 @@ import { BLOCK_VARIANTS } from './tools/block';
 import { DOCUMENT_VARIANTS } from './tools/document';
 import { FILE_VARIANTS } from './tools/file';
 import { NOTEBOOK_VARIANTS } from './tools/notebook';
+import { SEARCH_VARIANTS } from './tools/search';
 import { getSchemaProperties, getSchemaRequired, type ActionVariant, type JsonSchema } from './tools/shared';
 
 interface HelpResourceDefinition {
@@ -32,6 +33,7 @@ const VARIANTS_BY_CATEGORY: Record<ToolCategory, ActionVariant<string>[]> = {
     document: DOCUMENT_VARIANTS,
     block: BLOCK_VARIANTS,
     file: FILE_VARIANTS,
+    search: SEARCH_VARIANTS,
 };
 
 function getSchemaRequiredWithoutAction(schema: JsonSchema): string[] {
@@ -97,6 +99,14 @@ function buildExampleValue(fieldName: string, schema: JsonSchema): unknown {
             return { 'custom-mcp': 'demo' };
         case 'conf':
             return { closed: false };
+        case 'query':
+            return 'search keyword';
+        case 'stmt':
+            return "SELECT * FROM blocks WHERE content LIKE '%keyword%' LIMIT 20";
+        case 'k':
+            return 'todo';
+        case 'keyword':
+            return 'filter text';
         default:
             break;
     }
@@ -154,7 +164,7 @@ function renderToolOverview(): string {
     return [
         '# SiYuan MCP Tool Overview',
         '',
-        'This server exposes 4 aggregated tools: `notebook`, `document`, `block`, and `file`.',
+        'This server exposes 5 aggregated tools: `notebook`, `document`, `block`, `file`, and `search`.',
         '',
         '## High-risk actions',
         '',
@@ -221,6 +231,14 @@ function renderExamples(): string {
         '## Get the SiYuan version',
         '',
         buildActionExamples('file', 'get_version')[0],
+        '',
+        '## Full-text search',
+        '',
+        buildActionExamples('search', 'fulltext')[0],
+        '',
+        '## SQL query',
+        '',
+        buildActionExamples('search', 'query_sql')[0],
     ].join('\n');
 }
 
@@ -279,7 +297,7 @@ function buildStaticHelpResources(): HelpResourceDefinition[] {
             uri: EXAMPLES_RESOURCE_URI,
             name: 'examples',
             title: 'Common MCP Examples',
-            description: 'Minimal example calls for common notebook, document, block, and file actions.',
+            description: 'Minimal example calls for common notebook, document, block, file, and search actions.',
             mimeType: MIME_TYPE,
             text: renderExamples(),
         },

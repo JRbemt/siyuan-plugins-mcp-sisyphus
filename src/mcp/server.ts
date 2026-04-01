@@ -12,6 +12,7 @@ import { callBlockTool, listBlockTools } from './tools/block';
 import { callDocumentTool, listDocumentTools } from './tools/document';
 import { callFileTool, listFileTools } from './tools/file';
 import { callNotebookTool, listNotebookTools } from './tools/notebook';
+import { callSearchTool, listSearchTools } from './tools/search';
 
 const PLUGIN_CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
 
@@ -109,6 +110,7 @@ function getToolsByConfig(config: ToolConfig) {
         ...listDocumentTools(config.document),
         ...listBlockTools(config.block),
         ...listFileTools(config.file),
+        ...listSearchTools(config.search),
     ];
 }
 
@@ -190,7 +192,8 @@ export async function createSiYuanServer(): Promise<Server> {
             case 'notebook': return callNotebookTool(client, args, config.notebook, permMgr);
             case 'document': return callDocumentTool(client, args, config.document, permMgr);
             case 'block': return callBlockTool(client, args, config.block, permMgr);
-            case 'file': return callFileTool(client, args, config.file);
+            case 'file': return callFileTool(client, args, config.file, permMgr);
+            case 'search': return callSearchTool(client, args, config.search, permMgr);
         }
     });
 

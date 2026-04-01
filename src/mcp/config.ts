@@ -1,4 +1,4 @@
-export const TOOL_CATEGORIES = ['notebook', 'document', 'block', 'file'] as const;
+export const TOOL_CATEGORIES = ['notebook', 'document', 'block', 'file', 'search'] as const;
 
 export type ToolCategory = typeof TOOL_CATEGORIES[number];
 
@@ -6,17 +6,20 @@ export const NOTEBOOK_ACTIONS = ['list', 'create', 'open', 'close', 'remove', 'r
 export const DOCUMENT_ACTIONS = ['create', 'rename', 'remove', 'move', 'get_path', 'get_hpath', 'get_ids', 'get_child_blocks', 'get_child_docs'] as const;
 export const BLOCK_ACTIONS = ['insert', 'prepend', 'append', 'update', 'delete', 'move', 'fold', 'unfold', 'get_kramdown', 'get_children', 'transfer_ref', 'set_attrs', 'get_attrs'] as const;
 export const FILE_ACTIONS = ['upload_asset', 'render_template', 'render_sprig', 'export_md', 'export_resources', 'push_msg', 'push_err_msg', 'get_version', 'get_current_time'] as const;
+export const SEARCH_ACTIONS = ['fulltext', 'query_sql', 'search_tag', 'get_backlinks', 'get_backmentions'] as const;
 
 export type NotebookAction = typeof NOTEBOOK_ACTIONS[number];
 export type DocumentAction = typeof DOCUMENT_ACTIONS[number];
 export type BlockAction = typeof BLOCK_ACTIONS[number];
 export type FileAction = typeof FILE_ACTIONS[number];
+export type SearchAction = typeof SEARCH_ACTIONS[number];
 
 export type ToolActionMap = {
     notebook: NotebookAction;
     document: DocumentAction;
     block: BlockAction;
     file: FileAction;
+    search: SearchAction;
 };
 
 export interface CategoryToolConfig<Action extends string = string> {
@@ -80,6 +83,7 @@ export const ACTIONS_BY_CATEGORY: { [Category in ToolCategory]: readonly ToolAct
     document: DOCUMENT_ACTIONS,
     block: BLOCK_ACTIONS,
     file: FILE_ACTIONS,
+    search: SEARCH_ACTIONS,
 };
 
 const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
@@ -87,6 +91,7 @@ const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
     document: new Set(['remove', 'move']),
     block: new Set(['delete', 'move']),
     file: new Set(),
+    search: new Set(),
 };
 
 const createActionsRecord = <Action extends string>(
@@ -117,6 +122,10 @@ export function buildDefaultToolConfig(): ToolConfig {
         file: {
             enabled: true,
             actions: createActionsRecord(FILE_ACTIONS, ['upload_asset', 'render_template', 'render_sprig', 'export_md', 'export_resources', 'push_msg', 'push_err_msg', 'get_version', 'get_current_time']),
+        },
+        search: {
+            enabled: true,
+            actions: createActionsRecord(SEARCH_ACTIONS, ['fulltext', 'query_sql', 'search_tag', 'get_backlinks', 'get_backmentions']),
         },
     };
 }

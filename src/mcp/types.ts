@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, NOTEBOOK_ACTIONS } from "./config";
+import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS } from "./config";
 
 const NotebookConfSchema = z.object({
     name: z.string().optional(),
@@ -311,4 +311,40 @@ export const FileGetVersionSchema = z.object({
 
 export const FileGetCurrentTimeSchema = z.object({
     action: z.literal("get_current_time"),
+});
+
+export const SearchActionSchema = z.enum(SEARCH_ACTIONS);
+
+export const SearchFulltextSchema = z.object({
+    action: z.literal("fulltext"),
+    query: z.string().describe("Search query string"),
+    method: z.number().optional().describe("Search method: 0=keyword (default), 1=query syntax, 2=SQL, 3=regex"),
+    types: z.record(z.string(), z.boolean()).optional().describe("Block type filter, e.g. {\"heading\": true, \"paragraph\": true}"),
+    paths: z.array(z.string()).optional().describe("Restrict search to specific notebook paths"),
+    groupBy: z.number().optional().describe("0=no grouping (default), 1=group by document"),
+    orderBy: z.number().optional().describe("Sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)"),
+    page: z.number().optional().describe("Page number (1-based), default 1"),
+    pageSize: z.number().optional().describe("Results per page, default 32, max 128"),
+});
+
+export const SearchQuerySqlSchema = z.object({
+    action: z.literal("query_sql"),
+    stmt: z.string().describe("SQL SELECT statement to execute against the blocks/spans/assets tables"),
+});
+
+export const SearchTagSchema = z.object({
+    action: z.literal("search_tag"),
+    k: z.string().describe("Tag keyword to search for"),
+});
+
+export const SearchGetBacklinksSchema = z.object({
+    action: z.literal("get_backlinks"),
+    id: z.string().describe("Block or document ID to find backlinks for"),
+    keyword: z.string().optional().describe("Filter backlinks by keyword"),
+});
+
+export const SearchGetBackmentionsSchema = z.object({
+    action: z.literal("get_backmentions"),
+    id: z.string().describe("Block or document ID to find backmentions for"),
+    keyword: z.string().optional().describe("Filter backmentions by keyword"),
 });

@@ -2,6 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import * as fileApi from '../../api/file';
 import type { CategoryToolConfig, FileAction } from '../config';
 import { FILE_ACTION_HINTS, FILE_GUIDANCE } from '../help';
+import type { PermissionManager } from '../permissions';
 import {
     FileActionSchema,
     FileExportMdSchema,
@@ -14,6 +15,7 @@ import {
     FileRenderTemplateSchema,
     FileUploadAssetSchema,
 } from '../types';
+import { ensurePermissionForDocumentId } from './context';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
 
 export const FILE_TOOL_NAME = 'file';
@@ -94,6 +96,7 @@ export async function callFileTool(
     client: SiYuanClient,
     args: Record<string, unknown> | undefined,
     config: CategoryToolConfig<FileAction>,
+    permMgr: PermissionManager,
 ): Promise<ToolResult> {
     const rawArgs = args ?? {};
     const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
@@ -119,6 +122,8 @@ export async function callFileTool(
             }
             case 'render_template': {
                 const parsed = FileRenderTemplateSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) return denied;
                 const result = await fileApi.renderTemplate(client, parsed.id, parsed.path);
                 return createJsonResult(result);
             }
@@ -129,6 +134,8 @@ export async function callFileTool(
             }
             case 'export_md': {
                 const parsed = FileExportMdSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) return denied;
                 const result = await fileApi.exportMdContent(client, parsed.id);
                 return createJsonResult(result);
             }

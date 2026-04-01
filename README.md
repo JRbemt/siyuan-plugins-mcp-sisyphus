@@ -2,21 +2,23 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-MCP server for SiYuan Note. It exposes 4 aggregated tools through the Model Context Protocol:
+A SiYuan Note MCP server plugin built around progressive disclosure — collapsing 41 scattered API endpoints into five aggregated tools: `notebook`, `document`, `block`, `file`, and `search`. Paired with a three-tier permission model (none / readonly / write) and mandatory confirmation gates on high-risk actions, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
 
 - `notebook`
 - `document`
 - `block`
 - `file`
+- `search`
 
 Each tool uses a required `action` field instead of exposing dozens of endpoint-shaped tool names.
 
 ## Features
 
 - Full SiYuan API coverage for notebooks, documents, blocks, assets, export, and notifications
-- A smaller MCP surface: 4 tools instead of 41 endpoint-level tools
+- A smaller MCP surface: 5 tools instead of 41 endpoint-level tools
 - Action-level toggles in the plugin settings. In the default fallback config, delete-style actions are disabled while move actions stay enabled and confirmation-gated.
 - Notebook- and document-level tree queries for direct child documents and blocks
+- Full-text search, SQL queries, tag search, backlink and backmention queries
 - Notebook permission guards now resolve block/document ownership before mutating APIs run
 
 ## Permission Model
@@ -25,10 +27,11 @@ Each tool uses a required `action` field instead of exposing dozens of endpoint-
 - `readonly`: read access only; all document and block writes are rejected
 - `none`: no read or write access
 - `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
-- For AI regression runs, preheat all 4 tools early so permission prompts do not interrupt the middle of a test
+- For AI regression runs, preheat all 5 tools early so permission prompts do not interrupt the middle of a test
 
 ## Timeline
 
+- `v0.1.6`: Adds the `search` aggregated tool with full-text search, SQL queries, tag search, backlinks, and backmentions
 - `v0.1.5`: Shrinks MCP exposure to 4 aggregated tools and adds notebook-level permission guards with high-risk action confirmations
 - `v0.1.4`: Auto-generates the MCP config file on first install, so clients can connect out of the box
 - `v0.1.3`: Removes unrelated config noise and keeps the plugin focused on MCP capabilities
@@ -225,6 +228,34 @@ Example:
   "name": "file",
   "arguments": {
     "action": "get_version"
+  }
+}
+```
+
+### `search`
+
+Actions:
+
+- `fulltext`
+- `query_sql`
+- `search_tag`
+- `get_backlinks`
+- `get_backmentions`
+
+All search actions are read-only. `query_sql` only accepts SELECT and WITH statements; mutation queries are rejected.
+
+`fulltext` supports keyword, query syntax, SQL, and regex search modes via the `method` parameter.
+
+`get_backlinks` returns documents/blocks that reference the given block. `get_backmentions` returns documents/blocks that mention the given block's name.
+
+Example:
+
+```json
+{
+  "name": "search",
+  "arguments": {
+    "action": "query_sql",
+    "stmt": "SELECT * FROM blocks WHERE content LIKE '%keyword%' LIMIT 20"
   }
 }
 ```
