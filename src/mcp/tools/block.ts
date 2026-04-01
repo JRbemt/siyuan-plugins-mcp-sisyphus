@@ -1,134 +1,305 @@
 import type { SiYuanClient } from '../../api/client';
-import {
-    InsertBlockSchema,
-    PrependBlockSchema,
-    AppendBlockSchema,
-    UpdateBlockSchema,
-    DeleteBlockSchema,
-    MoveBlockSchema,
-    FoldBlockSchema,
-    UnfoldBlockSchema,
-    GetBlockKramdownSchema,
-    GetChildBlocksSchema,
-    TransferBlockRefSchema,
-    SetBlockAttrsSchema,
-    GetBlockAttrsSchema,
-} from '../../mcp/types';
-import * as blockApi from '../../api/block';
 import * as attributeApi from '../../api/attribute';
+import * as blockApi from '../../api/block';
+import type { BlockAction, CategoryToolConfig } from '../config';
+import { BLOCK_ACTION_HINTS, BLOCK_GUIDANCE } from '../help';
+import type { PermissionManager } from '../permissions';
+import {
+    BlockActionSchema,
+    BlockAppendSchema,
+    BlockDeleteSchema,
+    BlockFoldSchema,
+    BlockGetAttrsSchema,
+    BlockGetChildrenSchema,
+    BlockGetKramdownSchema,
+    BlockInsertSchema,
+    BlockMoveSchema,
+    BlockPrependSchema,
+    BlockSetAttrsSchema,
+    BlockTransferRefSchema,
+    BlockUnfoldSchema,
+    BlockUpdateSchema,
+} from '../types';
+import { ensurePermissionForDocumentId } from './context';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
 
-const BLOCK_TOOLS = [
-    { name: 'insert_block', description: 'Insert a new block at the specified position. Returns block ID in result.action.id. Note: Document ID can be used as block ID (document root block).', inputSchema: { type: 'object' as const, properties: { dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' }, data: { type: 'string', description: 'Block content' }, nextID: { type: 'string', description: 'Next block ID (optional)' }, previousID: { type: 'string', description: 'Previous block ID (optional)' }, parentID: { type: 'string', description: 'Parent block ID (optional)' } }, required: ['dataType', 'data'] } },
-    { name: 'prepend_block', description: 'Insert a block at the beginning of the parent\'s children. Returns block ID in result.action.id. parentID can be a document ID (document root block).', inputSchema: { type: 'object' as const, properties: { dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' }, data: { type: 'string', description: 'Block content' }, parentID: { type: 'string', description: 'Parent block ID (document ID can be used)' } }, required: ['dataType', 'data', 'parentID'] } },
-    { name: 'append_block', description: 'Insert a block at the end of the parent\'s children. Returns block ID in result.action.id. parentID can be a document ID (document root block).', inputSchema: { type: 'object' as const, properties: { dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' }, data: { type: 'string', description: 'Block content' }, parentID: { type: 'string', description: 'Parent block ID (document ID can be used)' } }, required: ['dataType', 'data', 'parentID'] } },
-    { name: 'update_block', description: 'Update an existing block\'s content. id should be a block ID (not document ID). Document root blocks may have limitations.', inputSchema: { type: 'object' as const, properties: { dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' }, data: { type: 'string', description: 'New block content' }, id: { type: 'string', description: 'Block ID (not document ID)' } }, required: ['dataType', 'data', 'id'] } },
-    { name: 'delete_block', description: 'Delete a block by block ID. Note: Cannot delete document root blocks.', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID' } }, required: ['id'] } },
-    { name: 'move_block', description: 'Move a block to a new position. id should be a block ID (not document ID).', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID to move' }, previousID: { type: 'string', description: 'Previous block ID (optional)' }, parentID: { type: 'string', description: 'New parent block ID (optional)' } }, required: ['id'] } },
-    { name: 'fold_block', description: 'Fold a block (collapse its children). id can be a document ID (document root block) or block ID.', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID or document ID' } }, required: ['id'] } },
-    { name: 'unfold_block', description: 'Unfold a block (expand its children). id can be a document ID (document root block) or block ID.', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID or document ID' } }, required: ['id'] } },
-    { name: 'get_block_kramdown', description: 'Get the kramdown content of a block. id can be a document ID (document root block) or block ID.', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID or document ID' } }, required: ['id'] } },
-    { name: 'get_child_blocks', description: 'Get all child blocks of a parent block. id can be a document ID (document root block) or block ID.', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID or document ID' } }, required: ['id'] } },
-    { name: 'transfer_block_ref', description: 'Transfer block references from one block to another. Both fromID and toID should be block IDs.', inputSchema: { type: 'object' as const, properties: { fromID: { type: 'string', description: 'Source block ID' }, toID: { type: 'string', description: 'Target block ID' }, refIDs: { type: 'array', items: { type: 'string', description: 'Reference block IDs' } } }, required: ['fromID', 'toID'] } },
-    { name: 'set_block_attrs', description: 'Set attributes for a block. id should be a block ID (not document ID).', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID' }, attrs: { type: 'object', additionalProperties: { type: 'string' }, description: 'Attributes object' } }, required: ['id', 'attrs'] } },
-    { name: 'get_block_attrs', description: 'Get attributes for a block. id should be a block ID (not document ID).', inputSchema: { type: 'object' as const, properties: { id: { type: 'string', description: 'Block ID' } }, required: ['id'] } },
+export const BLOCK_TOOL_NAME = 'block';
+
+export const BLOCK_VARIANTS: ActionVariant<BlockAction>[] = [
+    {
+        action: 'insert',
+        schema: createActionSchema('insert', {
+            dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' },
+            data: { type: 'string', description: 'Block content' },
+            nextID: { type: 'string', description: 'Next block ID' },
+            previousID: { type: 'string', description: 'Previous block ID' },
+            parentID: { type: 'string', description: 'Parent block or document ID' },
+        }, ['dataType', 'data'], 'Insert a new block at the specified position.'),
+    },
+    {
+        action: 'prepend',
+        schema: createActionSchema('prepend', {
+            dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' },
+            data: { type: 'string', description: 'Block content' },
+            parentID: { type: 'string', description: 'Parent block or document ID' },
+        }, ['dataType', 'data', 'parentID'], 'Insert a block at the beginning of a parent.'),
+    },
+    {
+        action: 'append',
+        schema: createActionSchema('append', {
+            dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' },
+            data: { type: 'string', description: 'Block content' },
+            parentID: { type: 'string', description: 'Parent block or document ID' },
+        }, ['dataType', 'data', 'parentID'], 'Insert a block at the end of a parent.'),
+    },
+    {
+        action: 'update',
+        schema: createActionSchema('update', {
+            dataType: { type: 'string', enum: ['markdown', 'dom'], description: 'Data format' },
+            data: { type: 'string', description: 'New block content' },
+            id: { type: 'string', description: 'Block ID' },
+        }, ['dataType', 'data', 'id'], 'Update block content.'),
+    },
+    {
+        action: 'delete',
+        schema: createActionSchema('delete', {
+            id: { type: 'string', description: 'Block ID' },
+        }, ['id'], 'Delete a block by ID.'),
+    },
+    {
+        action: 'move',
+        schema: createActionSchema('move', {
+            id: { type: 'string', description: 'Block ID' },
+            previousID: { type: 'string', description: 'Previous block ID' },
+            parentID: { type: 'string', description: 'New parent block ID' },
+        }, ['id'], 'Move a block to a new position.'),
+    },
+    {
+        action: 'fold',
+        schema: createActionSchema('fold', {
+            id: { type: 'string', description: 'Foldable block ID' },
+        }, ['id'], 'Fold a foldable block.'),
+    },
+    {
+        action: 'unfold',
+        schema: createActionSchema('unfold', {
+            id: { type: 'string', description: 'Foldable block ID' },
+        }, ['id'], 'Unfold a foldable block.'),
+    },
+    {
+        action: 'get_kramdown',
+        schema: createActionSchema('get_kramdown', {
+            id: { type: 'string', description: 'Block ID or document ID' },
+        }, ['id'], 'Get block content in kramdown format.'),
+    },
+    {
+        action: 'get_children',
+        schema: createActionSchema('get_children', {
+            id: { type: 'string', description: 'Block ID or document ID' },
+        }, ['id'], 'Get all child blocks of a parent.'),
+    },
+    {
+        action: 'transfer_ref',
+        schema: createActionSchema('transfer_ref', {
+            fromID: { type: 'string', description: 'Source block ID' },
+            toID: { type: 'string', description: 'Target block ID' },
+            refIDs: { type: 'array', items: { type: 'string' }, description: 'Reference block IDs' },
+        }, ['fromID', 'toID'], 'Transfer block references from one block to another.'),
+    },
+    {
+        action: 'set_attrs',
+        schema: createActionSchema('set_attrs', {
+            id: { type: 'string', description: 'Block ID' },
+            attrs: {
+                type: 'object',
+                description: 'Block attributes',
+                additionalProperties: { type: 'string' },
+            },
+        }, ['id', 'attrs'], 'Set block attributes.'),
+    },
+    {
+        action: 'get_attrs',
+        schema: createActionSchema('get_attrs', {
+            id: { type: 'string', description: 'Block ID' },
+        }, ['id'], 'Get block attributes.'),
+    },
 ];
 
-const BLOCK_NAMES = new Set(BLOCK_TOOLS.map((t) => t.name));
-
-export function listBlockTools() {
-    return BLOCK_TOOLS;
+export function listBlockTools(config: CategoryToolConfig<BlockAction>) {
+    return buildAggregatedTool(
+        BLOCK_TOOL_NAME,
+        'Grouped block operations.',
+        config,
+        BLOCK_VARIANTS,
+        {
+            guidance: BLOCK_GUIDANCE,
+            actionHints: BLOCK_ACTION_HINTS,
+            propertyDescriptionOverrides: {
+                parentID: 'Parent block or document ID. With prepend/append, a document ID targets the document head or tail; a block ID targets that block\'s child list.',
+                previousID: 'Sibling block ID to position after. For block(action="move"), provide previousID, parentID, or both to describe the destination.',
+            },
+        },
+    );
 }
 
 export async function callBlockTool(
     client: SiYuanClient,
-    name: string,
-    args: Record<string, unknown> | undefined
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null> {
-    if (!BLOCK_NAMES.has(name)) return null;
+    args: Record<string, unknown> | undefined,
+    config: CategoryToolConfig<BlockAction>,
+    permMgr: PermissionManager,
+): Promise<ToolResult> {
+    const rawArgs = args ?? {};
+    const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
+
     try {
-        switch (name) {
-            case 'insert_block': {
-                const parsed = InsertBlockSchema.parse(args);
+        const parsedAction = BlockActionSchema.parse(rawArgs.action);
+        if (!config.enabled || !config.actions[parsedAction]) {
+            return createDisabledActionResult(BLOCK_TOOL_NAME, parsedAction);
+        }
+
+        switch (parsedAction) {
+            case 'insert': {
+                const parsed = BlockInsertSchema.parse(rawArgs);
+                const refId = parsed.nextID || parsed.previousID || parsed.parentID;
+                if (refId) {
+                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, refId, 'write');
+                    if (denied) {
+                        return denied;
+                    }
+                }
                 const result = await blockApi.insertBlock(client, parsed.dataType, parsed.data, parsed.nextID, parsed.previousID, parsed.parentID);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'prepend_block': {
-                const parsed = PrependBlockSchema.parse(args);
+            case 'prepend': {
+                const parsed = BlockPrependSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+                if (denied) {
+                    return denied;
+                }
                 const result = await blockApi.prependBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'append_block': {
-                const parsed = AppendBlockSchema.parse(args);
+            case 'append': {
+                const parsed = BlockAppendSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+                if (denied) {
+                    return denied;
+                }
                 const result = await blockApi.appendBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'update_block': {
-                const parsed = UpdateBlockSchema.parse(args);
+            case 'update': {
+                const parsed = BlockUpdateSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                if (denied) {
+                    return denied;
+                }
                 const result = await blockApi.updateBlock(client, parsed.dataType, parsed.data, parsed.id);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'delete_block': {
-                const parsed = DeleteBlockSchema.parse(args);
+            case 'delete': {
+                const parsed = BlockDeleteSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                if (denied) {
+                    return denied;
+                }
                 await blockApi.deleteBlock(client, parsed.id);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, id: parsed.id }) }] };
+                return createJsonResult({ success: true, id: parsed.id });
             }
-            case 'move_block': {
-                const parsed = MoveBlockSchema.parse(args);
+            case 'move': {
+                const parsed = BlockMoveSchema.parse(rawArgs);
+                const source = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                if (source.denied) {
+                    return source.denied;
+                }
+                if (parsed.parentID) {
+                    const destination = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+                    if (destination.denied) {
+                        return destination.denied;
+                    }
+                }
+                if (parsed.previousID) {
+                    const sibling = await ensurePermissionForDocumentId(client, permMgr, parsed.previousID, 'write');
+                    if (sibling.denied) {
+                        return sibling.denied;
+                    }
+                }
                 const result = await blockApi.moveBlock(client, parsed.id, parsed.previousID, parsed.parentID);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'fold_block': {
-                const parsed = FoldBlockSchema.parse(args);
+            case 'fold': {
+                const parsed = BlockFoldSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                if (denied) {
+                    return denied;
+                }
                 await blockApi.foldBlock(client, parsed.id);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, id: parsed.id }) }] };
+                return createJsonResult({ success: true, id: parsed.id });
             }
-            case 'unfold_block': {
-                const parsed = UnfoldBlockSchema.parse(args);
+            case 'unfold': {
+                const parsed = BlockUnfoldSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                if (denied) {
+                    return denied;
+                }
                 await blockApi.unfoldBlock(client, parsed.id);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, id: parsed.id }) }] };
+                return createJsonResult({ success: true, id: parsed.id });
             }
-            case 'get_block_kramdown': {
-                const parsed = GetBlockKramdownSchema.parse(args);
+            case 'get_kramdown': {
+                const parsed = BlockGetKramdownSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
                 const result = await blockApi.getBlockKramdown(client, parsed.id);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'get_child_blocks': {
-                const parsed = GetChildBlocksSchema.parse(args);
+            case 'get_children': {
+                const parsed = BlockGetChildrenSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
                 const result = await blockApi.getChildBlocks(client, parsed.id);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'transfer_block_ref': {
-                const parsed = TransferBlockRefSchema.parse(args);
+            case 'transfer_ref': {
+                const parsed = BlockTransferRefSchema.parse(rawArgs);
+                const source = await ensurePermissionForDocumentId(client, permMgr, parsed.fromID, 'write');
+                if (source.denied) {
+                    return source.denied;
+                }
+                const target = await ensurePermissionForDocumentId(client, permMgr, parsed.toID, 'write');
+                if (target.denied) {
+                    return target.denied;
+                }
                 await blockApi.transferBlockRef(client, parsed.fromID, parsed.toID, parsed.refIDs);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, fromID: parsed.fromID, toID: parsed.toID }) }] };
+                return createJsonResult({ success: true, fromID: parsed.fromID, toID: parsed.toID });
             }
-            case 'set_block_attrs': {
-                const parsed = SetBlockAttrsSchema.parse(args);
+            case 'set_attrs': {
+                const parsed = BlockSetAttrsSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                if (denied) {
+                    return denied;
+                }
                 await attributeApi.setBlockAttrs(client, parsed.id, parsed.attrs);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, id: parsed.id, attrs: parsed.attrs }) }] };
+                return createJsonResult({ success: true, id: parsed.id, attrs: parsed.attrs });
             }
-            case 'get_block_attrs': {
-                const parsed = GetBlockAttrsSchema.parse(args);
+            case 'get_attrs': {
+                const parsed = BlockGetAttrsSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
                 const result = await attributeApi.getBlockAttrs(client, parsed.id);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            default:
-                return null;
+            default: {
+                const _exhaustive: never = parsedAction;
+                return createErrorResult(new Error(`Unknown action: ${_exhaustive}`), { tool: BLOCK_TOOL_NAME, action, rawArgs });
+            }
         }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorDetails = error instanceof Error && error.stack ? error.stack : String(error);
-        return { 
-            content: [{ 
-                type: 'text', 
-                text: JSON.stringify({ 
-                    error: errorMessage, 
-                    details: errorDetails,
-                    tool: name,
-                    args: args 
-                }, null, 2) 
-            }], 
-            isError: true 
-        };
+        return createErrorResult(error, { tool: BLOCK_TOOL_NAME, action, rawArgs });
     }
 }

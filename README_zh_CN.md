@@ -2,56 +2,71 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-思源笔记西西弗斯 MCP 服务器。通过 Model Context Protocol 提供 41 个工具，支持 AI 与思源笔记的深度集成。
+思源笔记西西弗斯 MCP 服务器。现在对外只暴露 4 个聚合 tool：
+
+- `notebook`
+- `document`
+- `block`
+- `file`
+
+每个 tool 通过必填的 `action` 字段分派具体操作，不再直接暴露 41 个 endpoint 风格的 tool 名。
 
 ## 功能特性
 
-- **完整的思源笔记 API 支持**: 通过 MCP 访问所有主要思源 API （除 SQL 外所有）
-- **41 工具可用**: 全面覆盖笔记本、文档、块和文件操作
+- 完整覆盖笔记本、文档、块、资源、导出和通知相关的思源 API
+- 对外工具面收缩为 4 个聚合 tool，减少模型选错 tool 的概率
+- 插件设置仍保留到 action 级别的开关。默认 fallback 配置里，删除类 action 不暴露，移动类 action 仍暴露但必须先确认。
+- 支持按笔记本 / 文档查询直属子文档与直属子块
+- 权限校验会先解析块 / 文档所属笔记本，再决定是否允许读写
 
-## ⚠️ 注意事项
+## 权限模型
 
-### 高危操作与确认
+- `write`：允许读写
+- `readonly`：只允许读，所有文档/块写操作都应被拒绝
+- `none`：禁止所有读写
+- `notebook(action="set_permission")` 设置后，会立即影响后续的 `notebook`、`document`、`block` 调用
+- AI 做回归时，建议一开始先把 4 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
 
-MCP 服务端会通过 **Server Instructions** 向 AI 发送使用说明，要求在执行以下操作**前必须先向用户说明并等待确认**，未经确认不得直接调用（但需要注意这取决于 AI，本工具不对危险操作产生的后果负责）：
+## 版本时间线
 
-- **删除类**: `remove_notebook`、`remove_document`、`remove_document_by_id`、`delete_block`
-- **移动类**: `move_documents`、`move_documents_by_id`、`move_block`
+- `v0.1.5`：对外 MCP 工具面收敛为 4 个聚合 tool，并新增笔记本级权限守卫与高危 action 确认约束
+- `v0.1.4`：首次安装插件时自动生成 MCP 配置文件，开箱即可连接客户端
+- `v0.1.3`：精简无关配置项，减少干扰，插件行为更聚焦 MCP 能力
+- `v0.1.2`：合并 MCP 工具配置入口，支持双路径回退，配置读取更稳定
 
-若使用的客户端支持并展示 MCP 的 instructions，AI 会先提问「我将执行 X，是否继续？」再在用户同意后调用工具。你也可在项目或 Cursor 的规则中再次强调上述约定。
+## 高危 Action
 
-**❕同时我们在设置中提供了所有tools的关闭按钮，如果介意可以在设置中关闭。**
+服务端 instructions 要求在调用以下 action 前先向用户明确说明并等待确认：
+
+- `notebook(action="remove")`
+- `document(action="remove")`
+- `document(action="move")`
+- `block(action="delete")`
+- `block(action="move")`
+
+如果你的 MCP 客户端会展示 instructions，模型应先征得确认再执行。
+
+默认 fallback 配置里，`document(action="move")` 和 `block(action="move")` 依然会出现在工具列表里。它们被启用并不代表可以跳过确认。
 
 ## 安装
 
 ### 从思源集市安装
 
 1. 打开思源笔记
-2. 进入设置 > 集市
-3. 搜索 "SiYuan MCP"
+2. 进入 设置 > 集市
+3. 搜索 `SiYuan MCP`
 4. 安装并启用插件
 
 ### 从源码安装
 
 ```bash
-# 克隆仓库
 git clone https://github.com/your-repo/siyuan-plugins-mcp-sisyphus.git
-
-# 安装依赖
 pnpm install
-
-# 构建
 pnpm run build
-
-# 创建开发链接
 pnpm run make-link
 ```
 
-## 使用方法
-
-### MCP 客户端配置
-
-在你喜欢的客户端中配置 MCP 服务器,任何支持 MCP stdio 协议的客户端都可以通过以下方式连接:
+## MCP 客户端配置
 
 ```json
 {
@@ -64,91 +79,181 @@ pnpm run make-link
 }
 ```
 
-**注意**：路径中的文件夹名必须与 plugin.json 的 `name` 一致，为 `siyuan-plugins-mcp-sisyphus`。若报错 `Cannot find module '.../mcp-server.cjs'`，请检查：① 该路径下是否存在 `mcp-server.cjs`；② 文件夹名是否写错（例如误写为 `siyuan-mcp-sisyphus`）。
+路径中的文件夹名必须与 `plugin.json` 的 `name` 一致，即 `siyuan-plugins-mcp-sisyphus`。
 
-#### OpenClaw / mcporter 用户
+OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md)。
 
-使用 OpenClaw 或 mcporter 时，可阅读 [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md)，按其中步骤通过 `mcporter config add` 添加本 MCP 并验证。
+## Tool 模型
 
-### 工具开关
+### `notebook`
 
-- 在思源中通过 **设置 → 插件 → SiYuan MCP sisyphus** 可开关各 MCP 工具，配置保存在插件数据中（`mcpToolsConfig`）。
+支持的 action：
 
-## 可用工具
+- `list`
+- `create`
+- `open`
+- `close`
+- `remove`
+- `rename`
+- `get_conf`
+- `set_conf`
+- `get_permissions`
+- `set_permission`
+- `get_child_docs`
 
-### 笔记本操作 (8 个工具)
+示例：
 
-| 工具                  | 描述                       |
-| --------------------- | -------------------------- |
-| `list_notebooks`    | 列出工作空间中的所有笔记本 |
-| `create_notebook`   | 创建新笔记本               |
-| `open_notebook`     | 打开笔记本                 |
-| `close_notebook`    | 关闭笔记本                 |
-| `remove_notebook`   | 删除笔记本                 |
-| `rename_notebook`   | 重命名笔记本               |
-| `get_notebook_conf` | 获取笔记本配置             |
-| `set_notebook_conf` | 设置笔记本配置             |
+```json
+{
+  "name": "notebook",
+  "arguments": {
+    "action": "rename",
+    "notebook": "20210808180117-czj9bvb",
+    "name": "Research"
+  }
+}
+```
 
-### 文档操作 (11 个工具)
+### `document`
 
-| 工具                      | 描述                         |
-| ------------------------- | ---------------------------- |
-| `create_document`       | 创建带 Markdown 内容的新文档 |
-| `rename_document`       | 通过路径重命名文档           |
-| `rename_document_by_id` | 通过 ID 重命名文档           |
-| `remove_document`       | 通过路径删除文档             |
-| `remove_document_by_id` | 通过 ID 删除文档             |
-| `move_documents`        | 移动多个文档到新位置         |
-| `move_documents_by_id`  | 通过 ID 移动多个文档         |
-| `get_document_path`     | 通过文档 ID 获取文件路径     |
-| `get_hpath_by_path`     | 通过文件路径获取层级路径     |
-| `get_hpath_by_id`       | 通过文档 ID 获取层级路径     |
-| `get_ids_by_hpath`      | 通过层级路径获取文档 ID      |
+支持的 action：
 
-### 块操作 (13 个工具)
+- `create`
+- `rename`
+- `remove`
+- `move`
+- `get_path`
+- `get_hpath`
+- `get_ids`
+- `get_child_blocks`
+- `get_child_docs`
 
-| 工具                   | 描述                       |
-| ---------------------- | -------------------------- |
-| `insert_block`       | 在指定位置插入新块         |
-| `prepend_block`      | 在父块开头插入块           |
-| `append_block`       | 在父块末尾插入块           |
-| `update_block`       | 更新块内容                 |
-| `delete_block`       | 删除块                     |
-| `move_block`         | 移动块到新位置             |
-| `fold_block`         | 折叠块（收起子块）         |
-| `unfold_block`       | 展开块（显示子块）         |
-| `get_block_kramdown` | 获取块的 kramdown 格式内容 |
-| `get_child_blocks`   | 获取父块的所有子块         |
-| `transfer_block_ref` | 转移块引用                 |
-| `set_block_attrs`    | 设置块属性                 |
-| `get_block_attrs`    | 获取块属性                 |
+路径语义：
 
-### 文件操作 (9 个工具)
+- `create.path` 是人类可读目标路径，例如 `/Inbox/Weekly Note`
+- 当 `rename`、`remove`、`move`、`get_hpath` 使用 `notebook + path` 形态时，`path` 是存储路径
+- `get_path` 负责把 `id -> 存储路径`
+- `get_hpath` 和 `get_ids` 负责在人类可读层级路径与存储路径/ID 之间转换
+- `get_child_blocks` 负责按文档 ID 获取直属子块
+- `get_child_docs` 负责按文档 ID 获取直属子文档
 
-| 工具                  | 描述                   |
-| --------------------- | ---------------------- |
-| `upload_asset`      | 上传文件到资源目录     |
-| `render_template`   | 使用文档上下文渲染模板 |
-| `render_sprig`      | 渲染 Sprig 模板        |
-| `export_md_content` | 导出文档为 Markdown    |
-| `export_resources`  | 导出资源为 ZIP         |
-| `push_msg`          | 推送通知消息           |
-| `push_err_msg`      | 推送错误消息           |
-| `get_version`       | 获取思源版本           |
-| `get_current_time`  | 获取当前系统时间       |
+`create` 不会自动补齐缺失的父路径。更稳妥的做法是在笔记本根路径创建，或只写到已存在的父路径下。
+
+其中 `rename`、`remove`、`move`、`get_hpath` 支持多种参数形态。例如 `rename` 可以使用 `id + title`，也可以使用 `notebook + path + title`。
+
+示例：
+
+```json
+{
+  "name": "document",
+  "arguments": {
+    "action": "rename",
+    "id": "20240318112233-abc123",
+    "title": "Weekly Notes"
+  }
+}
+```
+
+获取笔记本根目录直属子文档：
+
+```json
+{
+  "name": "notebook",
+  "arguments": {
+    "action": "get_child_docs",
+    "notebook": "20210808180117-czj9bvb"
+  }
+}
+```
+
+### `block`
+
+支持的 action：
+
+- `insert`
+- `prepend`
+- `append`
+- `update`
+- `delete`
+- `move`
+- `fold`
+- `unfold`
+- `get_kramdown`
+- `get_children`
+- `transfer_ref`
+- `set_attrs`
+- `get_attrs`
+
+`prepend` 传文档 ID 时会插入到文档开头，`append` 传文档 ID 时会插入到文档末尾。传块 ID 时，这两个 action 操作的是该块的子块列表。
+
+`fold` 和 `unfold` 应传可折叠块 ID。
+
+示例：
+
+```json
+{
+  "name": "block",
+  "arguments": {
+    "action": "append",
+    "dataType": "markdown",
+    "data": "- New item",
+    "parentID": "20240318112233-abc123"
+  }
+}
+```
+
+### `file`
+
+支持的 action：
+
+- `upload_asset`
+- `render_template`
+- `render_sprig`
+- `export_md`
+- `export_resources`
+- `push_msg`
+- `push_err_msg`
+- `get_version`
+- `get_current_time`
+
+示例：
+
+```json
+{
+  "name": "file",
+  "arguments": {
+    "action": "get_version"
+  }
+}
+```
+
+## 工具开关
+
+在思源中打开 `设置 -> 插件 -> SiYuan MCP sisyphus`。
+
+- 每个聚合 tool 有一个总开关
+- 每个 action 仍可单独启用或关闭
+- 默认 fallback 配置会暴露移动类 action，但不会暴露删除类 action
+- 旧版按 tool 名保存的配置会自动迁移到新格式
 
 ## 开发
 
-### 项目结构
+连接本机 SiYuan 做 live smoke：
 
+```bash
+pnpm run build
+node scripts/live_mcp_smoke.cjs
 ```
+
+```text
 siyuan-plugins-mcp-sisyphus/
 ├── src/
 │   ├── api/           # 思源 API 封装
 │   ├── mcp/           # MCP 服务器实现
-│   │   ├── tools/     # 工具实现
+│   │   ├── tools/     # 聚合 tool 处理器
+│   │   ├── config.ts  # 配置与迁移辅助
 │   │   ├── server.ts  # 主服务器
-│   │   └── types.ts   # 类型定义
+│   │   └── types.ts   # action 级校验
 │   └── index.ts       # 插件入口
 ├── public/i18n/       # 国际化
 └── package.json

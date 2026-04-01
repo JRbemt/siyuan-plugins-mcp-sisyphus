@@ -29,7 +29,7 @@
 
 <div class="config__tab-container {fn__none}" data-name={group}>
     <slot />
-    {#each settingItems as item (item.key)}
+    {#each settingItems as item (`${item.key}:${JSON.stringify(item.value)}`)}
         <Form.Wrap
             title={item.title}
             description={item.description}
@@ -38,7 +38,7 @@
             <Form.Input
                 type={item.type}
                 key={item.key}
-                bind:value={item.value}
+                value={item.value}
                 placeholder={item?.placeholder}
                 options={item?.options}
                 slider={item?.slider}

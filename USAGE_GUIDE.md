@@ -1,485 +1,286 @@
 # SiYuan MCP 使用指南
 
-## 快速开始
+## 快速认知
 
-### 1. 安装插件
+当前版本不再暴露 41 个零散 tool，而是统一为 4 个聚合入口：
 
-**方式一：从源码构建**
-```bash
-# 克隆仓库
-git clone https://github.com/your-repo/siyuan-mcp.git
-cd siyuan-mcp
+- `notebook`
+- `document`
+- `block`
+- `file`
 
-# 安装依赖
-pnpm install
+调用时统一通过 `action` 指定具体操作。
 
-# 构建
-pnpm run build
+默认 fallback 配置里，删除类 action 不暴露；`document(action="move")` 和 `block(action="move")` 仍会暴露，但必须先确认。
 
-# 将 dist 文件夹打包为 plugin-siyuan-mcp.zip
-# 在思源笔记的「设置-集市-本地」中上传安装
-```
+## 权限约定
 
-**方式二：从集市安装**
-- 打开思源笔记
-- 设置 → 集市 → 插件
-- 搜索「SiYuan MCP」
-- 点击下载并启用
+- `write`：允许读写
+- `readonly`：只允许读，禁止所有文档和块写操作
+- `none`：禁止所有读写
+- `notebook(action="set_permission")` 修改权限后，后续 `notebook` / `document` / `block` 调用会立即按新权限生效
+- 如果让 AI 执行整套回归，建议先对 `notebook`、`document`、`block`、`file` 各做一次低风险调用，提前完成授权预热
 
-### 2. 配置插件
-
-1. 打开思源笔记设置
-2. 点击顶部工具栏的 MCP 图标
-3. 在设置面板中配置：
-   - **API URL**: `http://127.0.0.1:6806`（默认）
-   - **自动启动**: 勾选以在插件加载时自动启动 MCP 服务器
-
-### 3. 配置 MCP 客户端
-
-#### Claude Desktop
-
-编辑 `claude_desktop_config.json`（位置因系统而异）：
-
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
+## 客户端配置
 
 ```json
 {
   "mcpServers": {
     "siyuan": {
       "command": "node",
-      "args": [
-        "/path/to/siyuan-mcp/dist/mcp-server.js"
-      ],
-      "env": {
-        "SIYUAN_API_URL": "http://127.0.0.1:6806"
-      }
+      "args": ["/绝对路径/SiYuan/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
     }
   }
 }
 ```
 
-#### Cursor
+## Action 速查
 
-在 Cursor 设置中：
-1. 打开 Settings → Features → MCP
-2. 点击「Add MCP Server」
-3. 配置：
-   - Name: `siyuan`
-   - Command: `node /path/to/siyuan-mcp/dist/mcp-server.js`
+### `notebook`
 
-#### 其他 MCP 客户端
+- `list`
+- `create`
+- `open`
+- `close`
+- `remove`
+- `rename`
+- `get_conf`
+- `set_conf`
+- `get_permissions`
+- `set_permission`
+- `get_child_docs`
 
-通用的 stdio 配置方式：
-```bash
-# 启动 MCP 服务器
-node dist/mcp-server.js
-```
+### `document`
 
-环境变量：
-- `SIYUAN_API_URL`: 思源 API 地址（默认：http://127.0.0.1:6806）
+- `create`
+- `rename`
+- `remove`
+- `move`
+- `get_path`
+- `get_hpath`
+- `get_ids`
+- `get_child_blocks`
+- `get_child_docs`
 
----
+### `block`
 
-## 工具功能详解
+- `insert`
+- `prepend`
+- `append`
+- `update`
+- `delete`
+- `move`
+- `fold`
+- `unfold`
+- `get_kramdown`
+- `get_children`
+- `transfer_ref`
+- `set_attrs`
+- `get_attrs`
 
-### 笔记本管理
+### `file`
 
-#### `list_notebooks`
-列出所有笔记本
+- `upload_asset`
+- `render_template`
+- `render_sprig`
+- `export_md`
+- `export_resources`
+- `push_msg`
+- `push_err_msg`
+- `get_version`
+- `get_current_time`
+
+## 调用示例
+
+### 重命名笔记本
+
 ```json
 {
-  "name": "list_notebooks",
-  "arguments": {}
-}
-```
-
-返回：
-```json
-{
-  "notebooks": [
-    {
-      "id": "20210808180117-czj9bvb",
-      "name": "笔记本名称",
-      "icon": "",
-      "sort": 0,
-      "closed": false
-    }
-  ]
-}
-```
-
-#### `create_notebook`
-创建新笔记本
-```json
-{
-  "name": "新笔记本名称"
-}
-```
-
-#### `open_notebook` / `close_notebook`
-打开/关闭笔记本
-```json
-{
-  "notebook": "笔记本ID"
-}
-```
-
----
-
-### 文档管理
-
-#### `create_document`
-通过 Markdown 创建文档
-```json
-{
-  "notebook": "笔记本ID",
-  "path": "/文件夹/文档名",
-  "markdown": "# 标题\n\n内容"
-}
-```
-
-#### `rename_document`
-重命名文档
-```json
-{
-  "notebook": "笔记本ID",
-  "path": "/旧路径",
-  "title": "新标题"
-}
-```
-
-#### `remove_document`
-删除文档
-```json
-{
-  "notebook": "笔记本ID",
-  "path": "/文档路径"
-}
-```
-
-#### `move_documents`
-移动文档
-```json
-{
-  "fromPaths": ["/源路径1", "/源路径2"],
-  "toNotebook": "目标笔记本ID",
-  "toPath": "/目标路径"
-}
-```
-
----
-
-### 块操作
-
-#### `insert_block`
-插入块到指定位置
-```json
-{
-  "dataType": "markdown",
-  "data": "## 二级标题",
-  "parentID": "父块ID",
-  "nextID": "后一个块ID"
-}
-```
-
-#### `append_block`
-在父块末尾追加子块
-```json
-{
-  "dataType": "markdown",
-  "data": "- 列表项",
-  "parentID": "父块ID"
-}
-```
-
-#### `update_block`
-更新块内容
-```json
-{
-  "dataType": "markdown",
-  "data": "更新后的内容",
-  "id": "块ID"
-}
-```
-
-#### `delete_block`
-删除块
-```json
-{
-  "id": "块ID"
-}
-```
-
-#### `fold_block` / `unfold_block`
-折叠/展开块
-```json
-{
-  "id": "块ID"
-}
-```
-
-#### `get_block_kramdown`
-获取块的 Kramdown 源码
-```json
-{
-  "id": "块ID"
-}
-```
-
-#### `get_child_blocks`
-获取子块列表
-```json
-{
-  "id": "父块ID"
-}
-```
-
----
-
-### 属性管理
-
-#### `set_block_attrs`
-设置块属性
-```json
-{
-  "id": "块ID",
-  "attrs": {
-    "custom-type": "note",
-    "custom-priority": "high"
+  "name": "notebook",
+  "arguments": {
+    "action": "rename",
+    "notebook": "20210808180117-czj9bvb",
+    "name": "Research"
   }
 }
 ```
 
-#### `get_block_attrs`
-获取块属性
+### 通过文档 ID 重命名文档
+
 ```json
 {
-  "id": "块ID"
+  "name": "document",
+  "arguments": {
+    "action": "rename",
+    "id": "20240318112233-abc123",
+    "title": "Weekly Notes"
+  }
 }
 ```
 
----
+### 获取笔记本根目录直属子文档
 
-### 资源与导出
-
-#### `upload_asset`
-上传资源文件
 ```json
 {
-  "assetsDirPath": "/assets/",
-  "file": "base64编码的文件内容",
-  "fileName": "image.png"
+  "name": "notebook",
+  "arguments": {
+    "action": "get_child_docs",
+    "notebook": "20210808180117-czj9bvb"
+  }
 }
 ```
 
-#### `export_md_content`
-导出文档为 Markdown
+### 通过文档 ID 获取直属子块
+
 ```json
 {
-  "id": "文档ID"
+  "name": "document",
+  "arguments": {
+    "action": "get_child_blocks",
+    "id": "20240318112233-abc123"
+  }
 }
 ```
 
-#### `render_sprig`
-渲染 Sprig 模板
+### 通过路径移动多个文档
+
 ```json
 {
-  "template": "{{now | date_modify \"+1d\" | date \"2006-01-02\"}}"
+  "name": "document",
+  "arguments": {
+    "action": "move",
+    "fromPaths": ["/Inbox/A.sy", "/Inbox/B.sy"],
+    "toNotebook": "20210808180117-czj9bvb",
+    "toPath": "/Archive"
+  }
 }
 ```
 
----
+### 在父块末尾追加内容
 
-### 系统通知
-
-#### `push_msg`
-推送消息通知
 ```json
 {
-  "msg": "操作成功",
-  "timeout": 3000
+  "name": "block",
+  "arguments": {
+    "action": "append",
+    "dataType": "markdown",
+    "data": "- New item",
+    "parentID": "20240318112233-abc123"
+  }
 }
 ```
 
-#### `push_err_msg`
-推送错误通知
+### 获取思源版本
+
 ```json
 {
-  "msg": "操作失败",
-  "timeout": 5000
+  "name": "file",
+  "arguments": {
+    "action": "get_version"
+  }
 }
 ```
 
-#### `get_version`
-获取思源版本
+## 参数形态说明
+
+### `document(action="create")`
+
+`create.path` 是人类可读目标路径，例如 `/Inbox/Weekly Note`。它不是 `get_path` 返回的存储路径，而且不会自动创建缺失的父路径。
+
+### `document(action="rename")`
+
+支持两种调用方式：
+
 ```json
-{}
+{
+  "action": "rename",
+  "id": "20240318112233-abc123",
+  "title": "New Title"
+}
 ```
 
----
-
-## 使用示例
-
-### 示例 1：创建学习笔记
-
-```
-用户：帮我创建一个关于 TypeScript 的学习笔记
-
-AI：
-1. 列出所有笔记本
-   → list_notebooks
-
-2. 创建新文档
-   → create_document
-   {
-     "notebook": "笔记本ID",
-     "path": "/学习笔记/TypeScript入门",
-     "markdown": "# TypeScript 入门\n\n## 什么是 TypeScript\n\nTypeScript 是 JavaScript 的超集..."
-   }
-
-3. 追加内容
-   → append_block
-   {
-     "dataType": "markdown",
-     "data": "## 基础类型\n\n- string\n- number\n- boolean\n- array",
-     "parentID": "文档ID"
-   }
+```json
+{
+  "action": "rename",
+  "notebook": "20210808180117-czj9bvb",
+  "path": "/20240318112233-abc123.sy",
+  "title": "New Title"
+}
 ```
 
-### 示例 2：整理笔记结构
+### `document(action="remove")`
 
-```
-用户：把「项目A」相关的笔记都移到「工作」笔记本下
+支持两种调用方式：
 
-AI：
-1. 搜索相关文档
-   → 通过 SQL 或遍历查找
-
-2. 移动文档
-   → move_docs_by_id
-   {
-     "fromIDs": ["doc1", "doc2", "doc3"],
-     "toID": "工作笔记本ID"
-   }
+```json
+{
+  "action": "remove",
+  "id": "20240318112233-abc123"
+}
 ```
 
-### 示例 3：批量处理
-
-```
-用户：给所有带 #重要 标签的块添加红色高亮
-
-AI：
-1. 查询带标签的块
-   → 使用思源 SQL API
-
-2. 设置属性
-   → set_block_attrs
-   {
-     "id": "块ID",
-     "attrs": {
-       "custom-background": "#ffcccc"
-     }
-   }
+```json
+{
+  "action": "remove",
+  "notebook": "20210808180117-czj9bvb",
+  "path": "/20240318112233-abc123.sy"
+}
 ```
 
----
+### `document(action="move")`
 
-## 故障排除
+支持两种调用方式：
 
-### 问题 1：MCP 服务器无法启动
-
-**检查清单：**
-1. 思源笔记是否已启动？
-2. API URL 是否正确？（默认 http://127.0.0.1:6806）
-3. 是否获取了 API Token？
-
-**解决方案：**
-```bash
-# 检查思源 API 是否正常
-curl http://127.0.0.1:6806/api/system/version
+```json
+{
+  "action": "move",
+  "fromIDs": ["20240318112233-a", "20240318112233-b"],
+  "toID": "20240318112233-parent"
+}
 ```
 
-### 问题 2：工具调用失败
-
-**常见原因：**
-- 参数类型错误（检查 Zod schema）
-- 块/文档 ID 不存在
-- 权限不足
-
-**调试方法：**
-1. 检查思源内核日志
-2. 验证 ID 是否存在：
-   ```json
-   {
-     "name": "get_block_kramdown",
-     "arguments": {
-       "id": "块ID"
-     }
-   }
-   ```
-
-### 问题 3：中文路径问题
-
-如果路径包含中文，确保：
-1. 使用正确的编码
-2. 思源 API 能正确解析
-
----
-
-## 最佳实践
-
-### 1. 批量操作
-- 使用 `move_docs_by_id` 而不是多次调用 `move_document`
-- 合并多次 `append_block` 为一次调用（如果可能）
-
-### 2. 错误处理
-- 始终检查 API 返回的 code
-- code 为 0 表示成功，非 0 表示错误
-
-### 3. ID 管理
-- 使用 `get_path_by_id` 将 ID 转换为可读路径
-- 使用 `get_ids_by_hpath` 将路径转换为 ID
-
-### 4. 性能优化
-- 缓存笔记本和文档列表
-- 避免频繁的状态查询
-
----
-
-## 高级用法
-
-### 自定义工作流
-
-结合思源模板和 MCP 工具，可以创建自动化工作流：
-
-```typescript
-// 每日笔记自动化
-1. 检查今日笔记是否存在
-2. 如果不存在，使用 render_template 创建
-3. 使用 push_msg 通知用户
+```json
+{
+  "action": "move",
+  "fromPaths": ["/20240318112233-a.sy", "/20240318112233-b.sy"],
+  "toNotebook": "20210808180117-czj9bvb",
+  "toPath": "/20240318112233-parent.sy"
+}
 ```
 
-### 与其他工具集成
+注意：
 
-- **与日历集成**：读取日历事件，创建待办事项
-- **与浏览器集成**：保存网页内容到思源
-- **与代码编辑器集成**：同步代码笔记
+- `rename`、`remove`、`move`、`get_hpath` 的 `path` / `fromPaths` / `toPath` 是存储路径
+- `get_path` 负责把 `id -> 存储路径`
+- `get_hpath` 和 `get_ids` 负责在人类可读层级路径与存储路径/ID 之间转换
+- `get_child_blocks` 和 `get_child_docs` 都要求传文档 ID，且只返回直属子项
 
----
+### `block(action="prepend" | "append" | "insert")`
 
-## 参考资源
+- `prepend` + 文档 ID：插入到文档开头
+- `append` + 文档 ID：插入到文档末尾
+- `prepend` / `append` + 块 ID：操作该块的子块列表
+- `insert`：按 `nextID` / `previousID` 精确定位插入
 
-- [思源笔记 API 文档](https://github.com/siyuan-note/siyuan/blob/master/API_zh_CN.md)
-- [MCP 协议规范](https://modelcontextprotocol.io/)
-- [项目 GitHub](https://github.com/your-repo/siyuan-mcp)
+### `block(action="fold" | "unfold")`
 
----
+实测应使用可折叠块 ID。直接传文档 ID 会被 SiYuan 拒绝。
 
-## 更新日志
+## 高危 Action
 
-### v1.0.0 (2026-02-19)
-- ✨ 初始版本
-- 🚀 支持 41 个 MCP 工具
-- 📚 完整的 API 封装
-- 🎨 配置面板 UI
+调用以下 action 前，应先向用户确认：
+
+- `notebook(action="remove")`
+- `document(action="remove")`
+- `document(action="move")`
+- `block(action="delete")`
+- `block(action="move")`
+
+## 设置页
+
+在 `设置 -> 插件 -> SiYuan MCP sisyphus` 中：
+
+- 可以按聚合 tool 总开关启停
+- 可以继续细到 action 级别控制
+- 默认 fallback 配置会暴露移动类 action，但不会暴露删除类 action
+- 旧版配置会自动迁移为新结构

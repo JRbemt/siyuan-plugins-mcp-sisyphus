@@ -1,16 +1,18 @@
 import { SiYuanClient } from './client';
 import type {
     IReqCreateDocWithMd,
-    IReqRenameDoc,
-    IReqRenameDocByID,
-    IReqRemoveDoc,
-    IReqRemoveDocByID,
+    IReqGetIDsByHPath,
+    IReqGetHPathByID,
+    IReqGetHPathByPath,
+    IReqGetPathByID,
+    IReqListDocsByPath,
     IReqMoveDocs,
     IReqMoveDocsByID,
-    IReqGetHPathByPath,
-    IReqGetHPathByID,
-    IReqGetPathByID,
-    IReqGetIDsByHPath,
+    IReqRemoveDoc,
+    IReqRemoveDocByID,
+    IReqRenameDoc,
+    IReqRenameDocByID,
+    IResListDocsByPath,
     IResGetPathByID,
 } from '../types/api';
 
@@ -167,4 +169,18 @@ export async function getIDsByHPath(
         path,
         notebook,
     } as IReqGetIDsByHPath);
+}
+
+/**
+ * List direct child documents by notebook + storage path
+ */
+export async function listDocsByPath(
+    client: SiYuanClient,
+    notebook: string,
+    path: string,
+): Promise<IResListDocsByPath> {
+    return client.request<IResListDocsByPath>('/api/filetree/listDocsByPath', {
+        notebook,
+        path,
+    } as IReqListDocsByPath);
 }

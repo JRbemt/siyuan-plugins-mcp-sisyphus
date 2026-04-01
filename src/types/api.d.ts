@@ -176,6 +176,29 @@ interface IResGetPathByID {
     path: string;
 }
 
+interface IReqListDocsByPath {
+    notebook: string;
+    path: string;
+}
+
+interface IResListDoc {
+    id?: string;
+    box?: string;
+    path: string;
+    hPath?: string;
+    name?: string;
+    icon?: string;
+    sort?: number;
+    count?: number;
+    subFileCount?: number;
+}
+
+interface IResListDocsByPath {
+    box: string;
+    path: string;
+    files: IResListDoc[];
+}
+
 interface IReqUpload {
     assetsDirPath: string;
     file: File[];
@@ -251,6 +274,10 @@ interface IReqGetChildBlocks {
     id: string;
 }
 
+interface IReqGetDocInfo {
+    id: string;
+}
+
 interface IReqTransferBlockRef {
     fromID: string;
     toID: string;
@@ -267,6 +294,14 @@ interface IResAppendBlock extends IResInsertBlock {}
 interface IResUpdateBlock extends IResInsertBlock {}
 interface IResDeleteBlock extends IResInsertBlock {}
 interface IResMoveBlock extends IResInsertBlock {}
+
+interface IResGetDocInfo {
+    id: string;
+    rootID: string;
+    name: string;
+    subFileCount?: number;
+    icon?: string;
+}
 
 interface IReqSetBlockAttrs {
     id: string;

@@ -1,257 +1,314 @@
 import { z } from "zod";
 
-export interface ServerConfig {
-    name: string;
-    version: string;
-    description?: string;
-}
+import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, NOTEBOOK_ACTIONS } from "./config";
 
-export const ListNotebooksSchema = z.object({});
-
-export const OpenNotebookSchema = z.object({
-    notebook: z.string().describe("Notebook ID"),
+const NotebookConfSchema = z.object({
+    name: z.string().optional(),
+    closed: z.boolean().optional(),
+    refCreateSavePath: z.string().optional(),
+    createDocNameTemplate: z.string().optional(),
+    dailyNoteSavePath: z.string().optional(),
+    dailyNoteTemplatePath: z.string().optional(),
 });
 
-export const CloseNotebookSchema = z.object({
-    notebook: z.string().describe("Notebook ID"),
+const DocumentReferenceSchema = z.object({
+    id: z.string().optional(),
+    notebook: z.string().optional(),
+    path: z.string().optional(),
 });
 
-export const CreateNotebookSchema = z.object({
+const DocumentPathReferenceSchema = DocumentReferenceSchema.superRefine((value, ctx) => {
+    const hasId = typeof value.id === "string";
+    const hasPathRef = typeof value.notebook === "string" || typeof value.path === "string";
+
+    if (hasId === hasPathRef) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Provide either id or notebook + path.",
+        });
+        return;
+    }
+
+    if (hasPathRef && (!value.notebook || !value.path)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Both notebook and path are required when id is not provided.",
+        });
+    }
+});
+
+const DocumentMoveReferenceSchema = z.object({
+    fromPaths: z.array(z.string()).optional(),
+    toNotebook: z.string().optional(),
+    toPath: z.string().optional(),
+    fromIDs: z.array(z.string()).optional(),
+    toID: z.string().optional(),
+}).superRefine((value, ctx) => {
+    const hasPathMode = Array.isArray(value.fromPaths) || typeof value.toNotebook === "string" || typeof value.toPath === "string";
+    const hasIdMode = Array.isArray(value.fromIDs) || typeof value.toID === "string";
+
+    if (hasPathMode === hasIdMode) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Provide either fromPaths + toNotebook + toPath or fromIDs + toID.",
+        });
+        return;
+    }
+
+    if (hasPathMode && (!value.fromPaths || !value.toNotebook || !value.toPath)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "fromPaths, toNotebook, and toPath are required for path-based moves.",
+        });
+    }
+
+    if (hasIdMode && (!value.fromIDs || !value.toID)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "fromIDs and toID are required for ID-based moves.",
+        });
+    }
+});
+
+export const NotebookActionSchema = z.enum(NOTEBOOK_ACTIONS);
+export const DocumentActionSchema = z.enum(DOCUMENT_ACTIONS);
+export const BlockActionSchema = z.enum(BLOCK_ACTIONS);
+export const FileActionSchema = z.enum(FILE_ACTIONS);
+
+export const NotebookListSchema = z.object({
+    action: z.literal("list"),
+});
+
+export const NotebookCreateSchema = z.object({
+    action: z.literal("create"),
     name: z.string().describe("Notebook name"),
 });
 
-export const RemoveNotebookSchema = z.object({
+export const NotebookOpenSchema = z.object({
+    action: z.literal("open"),
     notebook: z.string().describe("Notebook ID"),
 });
 
-export const RenameNotebookSchema = z.object({
+export const NotebookCloseSchema = z.object({
+    action: z.literal("close"),
+    notebook: z.string().describe("Notebook ID"),
+});
+
+export const NotebookRemoveSchema = z.object({
+    action: z.literal("remove"),
+    notebook: z.string().describe("Notebook ID"),
+});
+
+export const NotebookRenameSchema = z.object({
+    action: z.literal("rename"),
     notebook: z.string().describe("Notebook ID"),
     name: z.string().describe("New notebook name"),
 });
 
-export const GetNotebookConfSchema = z.object({
+export const NotebookGetConfSchema = z.object({
+    action: z.literal("get_conf"),
     notebook: z.string().describe("Notebook ID"),
 });
 
-export const SetNotebookConfSchema = z.object({
+export const NotebookSetConfSchema = z.object({
+    action: z.literal("set_conf"),
     notebook: z.string().describe("Notebook ID"),
-    conf: z.object({
-        name: z.string().optional(),
-        closed: z.boolean().optional(),
-        refCreateSavePath: z.string().optional(),
-        createDocNameTemplate: z.string().optional(),
-        dailyNoteSavePath: z.string().optional(),
-        dailyNoteTemplatePath: z.string().optional(),
-    }).describe("Notebook configuration"),
+    conf: NotebookConfSchema.describe("Notebook configuration"),
 });
 
-export const CreateDocSchema = z.object({
+export const NotebookGetPermissionsSchema = z.object({
+    action: z.literal("get_permissions"),
+});
+
+export const NotebookSetPermissionSchema = z.object({
+    action: z.literal("set_permission"),
     notebook: z.string().describe("Notebook ID"),
-    path: z.string().describe("Document path (e.g., /folder/doc)"),
+    permission: z.enum(["none", "readonly", "write"]).describe('Permission level: "none" blocks all access, "readonly" allows reads only, "write" allows full access (default for new notebooks)'),
+});
+
+export const NotebookGetChildDocsSchema = z.object({
+    action: z.literal("get_child_docs"),
+    notebook: z.string().describe("Notebook ID"),
+});
+
+export const DocumentCreateSchema = z.object({
+    action: z.literal("create"),
+    notebook: z.string().describe("Notebook ID"),
+    path: z.string().describe("Human-readable target path, must start with / (e.g., /foo/bar). Parent paths must already exist."),
     markdown: z.string().describe("Markdown content"),
 });
 
-export const RenameDocSchema = z.object({
-    notebook: z.string().describe("Notebook ID"),
-    path: z.string().describe("Document path"),
-    title: z.string().describe("New title"),
-});
+export const DocumentRenameSchema = z.object({
+    action: z.literal("rename"),
+    title: z.string().describe("New document title"),
+}).and(DocumentPathReferenceSchema);
 
-export const RenameDocByIDSchema = z.object({
-    id: z.string().describe("Document ID"),
-    title: z.string().describe("New title"),
-});
+export const DocumentRemoveSchema = z.object({
+    action: z.literal("remove"),
+}).and(DocumentPathReferenceSchema);
 
-export const RemoveDocSchema = z.object({
-    notebook: z.string().describe("Notebook ID"),
-    path: z.string().describe("Document path"),
-});
+export const DocumentMoveSchema = z.object({
+    action: z.literal("move"),
+}).and(DocumentMoveReferenceSchema);
 
-export const RemoveDocByIDSchema = z.object({
+export const DocumentGetPathSchema = z.object({
+    action: z.literal("get_path"),
     id: z.string().describe("Document ID"),
 });
 
-export const MoveDocsSchema = z.object({
-    fromPaths: z.array(z.string()).describe("Source document paths"),
-    toNotebook: z.string().describe("Target notebook ID"),
-    toPath: z.string().describe("Target path"),
-});
+export const DocumentGetHPathSchema = z.object({
+    action: z.literal("get_hpath"),
+}).and(DocumentPathReferenceSchema);
 
-export const MoveDocsByIDSchema = z.object({
-    fromIDs: z.array(z.string()).describe("Source document IDs"),
-    toID: z.string().describe("Target parent document ID or notebook ID"),
-});
-
-export const GetDocPathSchema = z.object({
-    id: z.string().describe("Document ID"),
-});
-
-export const GetHPathByPathSchema = z.object({
-    notebook: z.string().describe("Notebook ID"),
-    path: z.string().describe("Document path"),
-});
-
-export const GetHPathByIDSchema = z.object({
-    id: z.string().describe("Document ID"),
-});
-
-export const GetIDsByHPathSchema = z.object({
-    path: z.string().describe("Hierarchical path"),
+export const DocumentGetIdsSchema = z.object({
+    action: z.literal("get_ids"),
+    path: z.string().describe("Human-readable path (e.g., /foo/bar)"),
     notebook: z.string().describe("Notebook ID"),
 });
 
-export const InsertBlockSchema = z.object({
-    dataType: z.enum(["markdown", "dom"]).describe("Data type to insert"),
-    data: z.string().describe("Data to insert"),
-    nextID: z.string().optional().describe("Next block ID for positioning"),
-    previousID: z.string().optional().describe("Previous block ID for positioning"),
-    parentID: z.string().optional().describe("Parent block ID for positioning"),
+export const DocumentGetChildBlocksSchema = z.object({
+    action: z.literal("get_child_blocks"),
+    id: z.string().describe("Document ID"),
 });
 
-export const PrependBlockSchema = z.object({
-    dataType: z.enum(["markdown", "dom"]).describe("Data type to insert"),
-    data: z.string().describe("Data to insert"),
-    parentID: z.string().describe("Parent block ID"),
+export const DocumentGetChildDocsSchema = z.object({
+    action: z.literal("get_child_docs"),
+    id: z.string().describe("Document ID"),
 });
 
-export const AppendBlockSchema = z.object({
-    dataType: z.enum(["markdown", "dom"]).describe("Data type to insert"),
-    data: z.string().describe("Data to insert"),
-    parentID: z.string().describe("Parent block ID"),
+export const BlockInsertSchema = z.object({
+    action: z.literal("insert"),
+    dataType: z.enum(["markdown", "dom"]).describe("Data format"),
+    data: z.string().describe("Block content"),
+    nextID: z.string().optional().describe("Next block ID"),
+    previousID: z.string().optional().describe("Previous block ID"),
+    parentID: z.string().optional().describe("Parent block or document ID"),
 });
 
-export const UpdateBlockSchema = z.object({
-    dataType: z.enum(["markdown", "dom"]).describe("Data type to update"),
-    data: z.string().describe("New data"),
-    id: z.string().describe("Block ID to update"),
+export const BlockPrependSchema = z.object({
+    action: z.literal("prepend"),
+    dataType: z.enum(["markdown", "dom"]).describe("Data format"),
+    data: z.string().describe("Block content"),
+    parentID: z.string().describe("Parent block or document ID"),
 });
 
-export const DeleteBlockSchema = z.object({
-    id: z.string().describe("Block ID to delete"),
+export const BlockAppendSchema = z.object({
+    action: z.literal("append"),
+    dataType: z.enum(["markdown", "dom"]).describe("Data format"),
+    data: z.string().describe("Block content"),
+    parentID: z.string().describe("Parent block or document ID"),
 });
 
-export const MoveBlockSchema = z.object({
-    id: z.string().describe("Block ID to move"),
-    previousID: z.string().optional().describe("Previous block ID for positioning"),
-    parentID: z.string().optional().describe("Parent block ID"),
-});
-
-export const FoldBlockSchema = z.object({
-    id: z.string().describe("Block ID to fold"),
-});
-
-export const UnfoldBlockSchema = z.object({
-    id: z.string().describe("Block ID to unfold"),
-});
-
-export const GetBlockKramdownSchema = z.object({
+export const BlockUpdateSchema = z.object({
+    action: z.literal("update"),
+    dataType: z.enum(["markdown", "dom"]).describe("Data format"),
+    data: z.string().describe("New block content"),
     id: z.string().describe("Block ID"),
 });
 
-export const GetChildBlocksSchema = z.object({
-    id: z.string().describe("Parent block ID"),
+export const BlockDeleteSchema = z.object({
+    action: z.literal("delete"),
+    id: z.string().describe("Block ID"),
 });
 
-export const TransferBlockRefSchema = z.object({
+export const BlockMoveSchema = z.object({
+    action: z.literal("move"),
+    id: z.string().describe("Block ID"),
+    previousID: z.string().optional().describe("Previous block ID"),
+    parentID: z.string().optional().describe("New parent block ID"),
+}).superRefine((value, ctx) => {
+    if (!value.previousID && !value.parentID) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Provide previousID, parentID, or both to describe the destination.",
+            path: ["previousID"],
+        });
+    }
+});
+
+export const BlockFoldSchema = z.object({
+    action: z.literal("fold"),
+    id: z.string().describe("Foldable block ID"),
+});
+
+export const BlockUnfoldSchema = z.object({
+    action: z.literal("unfold"),
+    id: z.string().describe("Foldable block ID"),
+});
+
+export const BlockGetKramdownSchema = z.object({
+    action: z.literal("get_kramdown"),
+    id: z.string().describe("Block ID or document ID"),
+});
+
+export const BlockGetChildrenSchema = z.object({
+    action: z.literal("get_children"),
+    id: z.string().describe("Block ID or document ID"),
+});
+
+export const BlockTransferRefSchema = z.object({
+    action: z.literal("transfer_ref"),
     fromID: z.string().describe("Source block ID"),
     toID: z.string().describe("Target block ID"),
-    refIDs: z.array(z.string()).optional().describe("Reference block IDs to transfer"),
+    refIDs: z.array(z.string()).optional().describe("Reference block IDs"),
 });
 
-export const SetBlockAttrsSchema = z.object({
+export const BlockSetAttrsSchema = z.object({
+    action: z.literal("set_attrs"),
     id: z.string().describe("Block ID"),
-    attrs: z.record(z.string(), z.string()).describe("Block attributes (custom-*)"),
+    attrs: z.record(z.string(), z.string()).describe("Block attributes"),
 });
 
-export const GetBlockAttrsSchema = z.object({
+export const BlockGetAttrsSchema = z.object({
+    action: z.literal("get_attrs"),
     id: z.string().describe("Block ID"),
 });
 
-export const UploadAssetSchema = z.object({
+export const FileUploadAssetSchema = z.object({
+    action: z.literal("upload_asset"),
     assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),
     file: z.string().describe("Base64 encoded file content"),
     fileName: z.string().describe("Original file name"),
 });
 
-export const RenderTemplateSchema = z.object({
+export const FileRenderTemplateSchema = z.object({
+    action: z.literal("render_template"),
     id: z.string().describe("Document ID for template context"),
     path: z.string().describe("Template file absolute path"),
 });
 
-export const RenderSprigSchema = z.object({
+export const FileRenderSprigSchema = z.object({
+    action: z.literal("render_sprig"),
     template: z.string().describe("Sprig template content"),
 });
 
-export const ExportMdContentSchema = z.object({
+export const FileExportMdSchema = z.object({
+    action: z.literal("export_md"),
     id: z.string().describe("Document ID to export"),
 });
 
-export const ExportResourcesSchema = z.object({
+export const FileExportResourcesSchema = z.object({
+    action: z.literal("export_resources"),
     paths: z.array(z.string()).describe("Paths to export"),
     name: z.string().optional().describe("Export file name"),
 });
 
-export const PushMsgSchema = z.object({
+export const FilePushMsgSchema = z.object({
+    action: z.literal("push_msg"),
     msg: z.string().describe("Message content"),
     timeout: z.number().optional().describe("Display timeout in milliseconds"),
 });
 
-export const PushErrMsgSchema = z.object({
+export const FilePushErrMsgSchema = z.object({
+    action: z.literal("push_err_msg"),
     msg: z.string().describe("Error message content"),
     timeout: z.number().optional().describe("Display timeout in milliseconds"),
 });
 
-export const GetVersionSchema = z.object({});
+export const FileGetVersionSchema = z.object({
+    action: z.literal("get_version"),
+});
 
-export const GetCurrentTimeSchema = z.object({});
-
-export type ListNotebooksInput = z.infer<typeof ListNotebooksSchema>;
-export type OpenNotebookInput = z.infer<typeof OpenNotebookSchema>;
-export type CloseNotebookInput = z.infer<typeof CloseNotebookSchema>;
-export type CreateNotebookInput = z.infer<typeof CreateNotebookSchema>;
-export type RemoveNotebookInput = z.infer<typeof RemoveNotebookSchema>;
-export type RenameNotebookInput = z.infer<typeof RenameNotebookSchema>;
-export type GetNotebookConfInput = z.infer<typeof GetNotebookConfSchema>;
-export type SetNotebookConfInput = z.infer<typeof SetNotebookConfSchema>;
-
-export type CreateDocInput = z.infer<typeof CreateDocSchema>;
-export type RenameDocInput = z.infer<typeof RenameDocSchema>;
-export type RenameDocByIDInput = z.infer<typeof RenameDocByIDSchema>;
-export type RemoveDocInput = z.infer<typeof RemoveDocSchema>;
-export type RemoveDocByIDInput = z.infer<typeof RemoveDocByIDSchema>;
-export type MoveDocsInput = z.infer<typeof MoveDocsSchema>;
-export type MoveDocsByIDInput = z.infer<typeof MoveDocsByIDSchema>;
-
-export type GetDocPathInput = z.infer<typeof GetDocPathSchema>;
-export type GetHPathByPathInput = z.infer<typeof GetHPathByPathSchema>;
-export type GetHPathByIDInput = z.infer<typeof GetHPathByIDSchema>;
-export type GetIDsByHPathInput = z.infer<typeof GetIDsByHPathSchema>;
-
-export type InsertBlockInput = z.infer<typeof InsertBlockSchema>;
-export type PrependBlockInput = z.infer<typeof PrependBlockSchema>;
-export type AppendBlockInput = z.infer<typeof AppendBlockSchema>;
-export type UpdateBlockInput = z.infer<typeof UpdateBlockSchema>;
-export type DeleteBlockInput = z.infer<typeof DeleteBlockSchema>;
-export type MoveBlockInput = z.infer<typeof MoveBlockSchema>;
-export type FoldBlockInput = z.infer<typeof FoldBlockSchema>;
-export type UnfoldBlockInput = z.infer<typeof UnfoldBlockSchema>;
-export type GetBlockKramdownInput = z.infer<typeof GetBlockKramdownSchema>;
-export type GetChildBlocksInput = z.infer<typeof GetChildBlocksSchema>;
-export type TransferBlockRefInput = z.infer<typeof TransferBlockRefSchema>;
-
-export type SetBlockAttrsInput = z.infer<typeof SetBlockAttrsSchema>;
-export type GetBlockAttrsInput = z.infer<typeof GetBlockAttrsSchema>;
-
-export type UploadAssetInput = z.infer<typeof UploadAssetSchema>;
-
-export type RenderTemplateInput = z.infer<typeof RenderTemplateSchema>;
-export type RenderSprigInput = z.infer<typeof RenderSprigSchema>;
-
-export type ExportMdContentInput = z.infer<typeof ExportMdContentSchema>;
-export type ExportResourcesInput = z.infer<typeof ExportResourcesSchema>;
-
-export type PushMsgInput = z.infer<typeof PushMsgSchema>;
-export type PushErrMsgInput = z.infer<typeof PushErrMsgSchema>;
-
-export type GetVersionInput = z.infer<typeof GetVersionSchema>;
-export type GetCurrentTimeInput = z.infer<typeof GetCurrentTimeSchema>;
+export const FileGetCurrentTimeSchema = z.object({
+    action: z.literal("get_current_time"),
+});

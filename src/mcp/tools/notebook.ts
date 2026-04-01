@@ -1,86 +1,222 @@
 import type { SiYuanClient } from '../../api/client';
-import {
-    ListNotebooksSchema,
-    OpenNotebookSchema,
-    CloseNotebookSchema,
-    CreateNotebookSchema,
-    RemoveNotebookSchema,
-    RenameNotebookSchema,
-    GetNotebookConfSchema,
-    SetNotebookConfSchema,
-} from '../../mcp/types';
 import * as notebookApi from '../../api/notebook';
+import type { CategoryToolConfig, NotebookAction } from '../config';
+import { NOTEBOOK_ACTION_HINTS, NOTEBOOK_GUIDANCE } from '../help';
+import type { PermissionManager } from '../permissions';
+import {
+    NotebookActionSchema,
+    NotebookCloseSchema,
+    NotebookCreateSchema,
+    NotebookGetConfSchema,
+    NotebookGetChildDocsSchema,
+    NotebookGetPermissionsSchema,
+    NotebookListSchema,
+    NotebookOpenSchema,
+    NotebookRemoveSchema,
+    NotebookRenameSchema,
+    NotebookSetConfSchema,
+    NotebookSetPermissionSchema,
+} from '../types';
+import { ensurePermissionForNotebook, listChildDocumentsByPath } from './context';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
 
-const NOTEBOOK_TOOLS = [
-        { name: 'list_notebooks', description: 'List all notebooks in the workspace', inputSchema: { type: 'object', properties: {} } },
-        { name: 'create_notebook', description: 'Create a new notebook', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Notebook name' } }, required: ['name'] } },
-        { name: 'open_notebook', description: 'Open a notebook', inputSchema: { type: 'object', properties: { notebook: { type: 'string', description: 'Notebook ID' } }, required: ['notebook'] } },
-        { name: 'close_notebook', description: 'Close a notebook', inputSchema: { type: 'object', properties: { notebook: { type: 'string', description: 'Notebook ID' } }, required: ['notebook'] } },
-        { name: 'remove_notebook', description: 'Remove a notebook', inputSchema: { type: 'object', properties: { notebook: { type: 'string', description: 'Notebook ID' } }, required: ['notebook'] } },
-        { name: 'rename_notebook', description: 'Rename a notebook', inputSchema: { type: 'object', properties: { notebook: { type: 'string', description: 'Notebook ID' }, name: { type: 'string', description: 'New notebook name' } }, required: ['notebook', 'name'] } },
-        { name: 'get_notebook_conf', description: 'Get notebook configuration', inputSchema: { type: 'object', properties: { notebook: { type: 'string', description: 'Notebook ID' } }, required: ['notebook'] } },
-        { name: 'set_notebook_conf', description: 'Set notebook configuration', inputSchema: { type: 'object', properties: { notebook: { type: 'string', description: 'Notebook ID' }, conf: { type: 'object', properties: { name: { type: 'string' }, closed: { type: 'boolean' }, refCreateSavePath: { type: 'string' }, createDocNameTemplate: { type: 'string' }, dailyNoteSavePath: { type: 'string' }, dailyNoteTemplatePath: { type: 'string' } } } }, required: ['notebook', 'conf'] } },
+export const NOTEBOOK_TOOL_NAME = 'notebook';
+
+export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
+    {
+        action: 'list',
+        schema: createActionSchema('list', {}, [], 'List all notebooks in the workspace.'),
+    },
+    {
+        action: 'create',
+        schema: createActionSchema('create', {
+            name: { type: 'string', description: 'Notebook name' },
+        }, ['name'], 'Create a new notebook.'),
+    },
+    {
+        action: 'open',
+        schema: createActionSchema('open', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+        }, ['notebook'], 'Open a notebook.'),
+    },
+    {
+        action: 'close',
+        schema: createActionSchema('close', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+        }, ['notebook'], 'Close a notebook.'),
+    },
+    {
+        action: 'remove',
+        schema: createActionSchema('remove', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+        }, ['notebook'], 'Remove a notebook.'),
+    },
+    {
+        action: 'rename',
+        schema: createActionSchema('rename', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+            name: { type: 'string', description: 'New notebook name' },
+        }, ['notebook', 'name'], 'Rename a notebook.'),
+    },
+    {
+        action: 'get_conf',
+        schema: createActionSchema('get_conf', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+        }, ['notebook'], 'Get notebook configuration.'),
+    },
+    {
+        action: 'set_conf',
+        schema: createActionSchema('set_conf', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+            conf: {
+                type: 'object',
+                description: 'Notebook configuration',
+                properties: {
+                    name: { type: 'string' },
+                    closed: { type: 'boolean' },
+                    refCreateSavePath: { type: 'string' },
+                    createDocNameTemplate: { type: 'string' },
+                    dailyNoteSavePath: { type: 'string' },
+                    dailyNoteTemplatePath: { type: 'string' },
+                },
+            },
+        }, ['notebook', 'conf'], 'Set notebook configuration.'),
+    },
+    {
+        action: 'get_permissions',
+        schema: createActionSchema('get_permissions', {}, [], 'Get permission levels for all notebooks. Returns each notebook with its permission: "write" (full access, default), "readonly" (read only), or "none" (no access).'),
+    },
+    {
+        action: 'set_permission',
+        schema: createActionSchema('set_permission', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+            permission: {
+                type: 'string',
+                enum: ['none', 'readonly', 'write'],
+                description: 'Permission level: "none" blocks all access, "readonly" allows reads only, "write" allows full access (default)',
+            },
+        }, ['notebook', 'permission'], 'Set the permission level for a notebook.'),
+    },
+    {
+        action: 'get_child_docs',
+        schema: createActionSchema('get_child_docs', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+        }, ['notebook'], 'Get direct child documents at the notebook root.'),
+    },
 ];
 
-const NOTEBOOK_NAMES = new Set(NOTEBOOK_TOOLS.map((t) => t.name));
-
-export function listNotebookTools() {
-    return NOTEBOOK_TOOLS;
+export function listNotebookTools(config: CategoryToolConfig<NotebookAction>) {
+    return buildAggregatedTool(
+        NOTEBOOK_TOOL_NAME,
+        'Grouped notebook operations.',
+        config,
+        NOTEBOOK_VARIANTS,
+        {
+            guidance: NOTEBOOK_GUIDANCE,
+            actionHints: NOTEBOOK_ACTION_HINTS,
+        },
+    );
 }
 
 export async function callNotebookTool(
     client: SiYuanClient,
-    name: string,
-    args: Record<string, unknown> | undefined
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null> {
-    if (!NOTEBOOK_NAMES.has(name)) return null;
+    args: Record<string, unknown> | undefined,
+    config: CategoryToolConfig<NotebookAction>,
+    permMgr: PermissionManager,
+): Promise<ToolResult> {
+    const rawArgs = args ?? {};
+    const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
+
     try {
-        switch (name) {
-            case 'list_notebooks': {
-                ListNotebooksSchema.parse(args);
+        const parsedAction = NotebookActionSchema.parse(rawArgs.action);
+        if (!config.enabled || !config.actions[parsedAction]) {
+            return createDisabledActionResult(NOTEBOOK_TOOL_NAME, parsedAction);
+        }
+
+        switch (parsedAction) {
+            case 'list': {
+                NotebookListSchema.parse(rawArgs);
                 const result = await notebookApi.listNotebooks(client);
-                return { content: [{ type: 'text', text: JSON.stringify(result.notebooks, null, 2) }] };
+                return createJsonResult(result.notebooks);
             }
-            case 'create_notebook': {
-                const parsed = CreateNotebookSchema.parse(args);
+            case 'create': {
+                const parsed = NotebookCreateSchema.parse(rawArgs);
                 const result = await notebookApi.createNotebook(client, parsed.name);
-                return { content: [{ type: 'text', text: JSON.stringify(result.notebook, null, 2) }] };
+                return createJsonResult(result.notebook);
             }
-            case 'open_notebook': {
-                const parsed = OpenNotebookSchema.parse(args);
+            case 'open': {
+                const parsed = NotebookOpenSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
+                if (denied) return denied;
                 await notebookApi.openNotebook(client, parsed.notebook);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, notebook: parsed.notebook }) }] };
+                return createJsonResult({ success: true, notebook: parsed.notebook });
             }
-            case 'close_notebook': {
-                const parsed = CloseNotebookSchema.parse(args);
+            case 'close': {
+                const parsed = NotebookCloseSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
+                if (denied) return denied;
                 await notebookApi.closeNotebook(client, parsed.notebook);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, notebook: parsed.notebook }) }] };
+                return createJsonResult({ success: true, notebook: parsed.notebook });
             }
-            case 'remove_notebook': {
-                const parsed = RemoveNotebookSchema.parse(args);
+            case 'remove': {
+                const parsed = NotebookRemoveSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
+                if (denied) return denied;
                 await notebookApi.removeNotebook(client, parsed.notebook);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, notebook: parsed.notebook }) }] };
+                return createJsonResult({ success: true, notebook: parsed.notebook });
             }
-            case 'rename_notebook': {
-                const parsed = RenameNotebookSchema.parse(args);
+            case 'rename': {
+                const parsed = NotebookRenameSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
+                if (denied) return denied;
                 await notebookApi.renameNotebook(client, parsed.notebook, parsed.name);
-                return { content: [{ type: 'text', text: JSON.stringify({ success: true, notebook: parsed.notebook, name: parsed.name }) }] };
+                return createJsonResult({ success: true, notebook: parsed.notebook, name: parsed.name });
             }
-            case 'get_notebook_conf': {
-                const parsed = GetNotebookConfSchema.parse(args);
+            case 'get_conf': {
+                const parsed = NotebookGetConfSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
+                if (denied) return denied;
                 const result = await notebookApi.getNotebookConf(client, parsed.notebook);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            case 'set_notebook_conf': {
-                const parsed = SetNotebookConfSchema.parse(args);
+            case 'set_conf': {
+                const parsed = NotebookSetConfSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
+                if (denied) return denied;
                 const result = await notebookApi.setNotebookConf(client, parsed.notebook, parsed.conf);
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+                return createJsonResult(result);
             }
-            default:
-                return null;
+            case 'get_permissions': {
+                NotebookGetPermissionsSchema.parse(rawArgs);
+                await permMgr.reload();
+                const listResult = await notebookApi.listNotebooks(client);
+                const notebooks = listResult.notebooks.map(nb => ({
+                    id: nb.id,
+                    name: nb.name,
+                    permission: permMgr.get(nb.id),
+                }));
+                return createJsonResult({ notebooks });
+            }
+            case 'set_permission': {
+                const parsed = NotebookSetPermissionSchema.parse(rawArgs);
+                await permMgr.set(parsed.notebook, parsed.permission);
+                return createJsonResult({ success: true, notebook: parsed.notebook, permission: parsed.permission });
+            }
+            case 'get_child_docs': {
+                const parsed = NotebookGetChildDocsSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const children = await listChildDocumentsByPath(client, parsed.notebook, '/');
+                return createJsonResult(children);
+            }
+            default: {
+                const _exhaustive: never = parsedAction;
+                return createErrorResult(new Error(`Unknown action: ${_exhaustive}`), { tool: NOTEBOOK_TOOL_NAME, action, rawArgs });
+            }
         }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return { content: [{ type: 'text', text: `Error: ${errorMessage}` }], isError: true };
+        return createErrorResult(error, { tool: NOTEBOOK_TOOL_NAME, action, rawArgs });
     }
 }

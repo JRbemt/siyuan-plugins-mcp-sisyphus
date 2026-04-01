@@ -2,25 +2,51 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-MCP server for SiYuan Note. Provides 41 tools for AI integration with SiYuan through the Model Context Protocol.
+MCP server for SiYuan Note. It exposes 4 aggregated tools through the Model Context Protocol:
+
+- `notebook`
+- `document`
+- `block`
+- `file`
+
+Each tool uses a required `action` field instead of exposing dozens of endpoint-shaped tool names.
 
 ## Features
 
-- **Complete SiYuan Note API Support**: Access all major SiYuan APIs through MCP (except SQL)
-- **41 Tools Available**: Full coverage of notebook, document, block, and file operations
+- Full SiYuan API coverage for notebooks, documents, blocks, assets, export, and notifications
+- A smaller MCP surface: 4 tools instead of 41 endpoint-level tools
+- Action-level toggles in the plugin settings. In the default fallback config, delete-style actions are disabled while move actions stay enabled and confirmation-gated.
+- Notebook- and document-level tree queries for direct child documents and blocks
+- Notebook permission guards now resolve block/document ownership before mutating APIs run
 
-## ⚠️ Important Notes
+## Permission Model
 
-### High-Risk Operations and Confirmation
+- `write`: full read/write access
+- `readonly`: read access only; all document and block writes are rejected
+- `none`: no read or write access
+- `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
+- For AI regression runs, preheat all 4 tools early so permission prompts do not interrupt the middle of a test
 
-The MCP server sends **Server Instructions** to AI, requiring that the following operations **must be explained to the user and wait for confirmation** before execution. Do not call them without user confirmation (Note: This depends on the AI, and this tool is not responsible for consequences of dangerous operations):
+## Timeline
 
-- **Delete operations**: `remove_notebook`, `remove_document`, `remove_document_by_id`, `delete_block`
-- **Move operations**: `move_documents`, `move_documents_by_id`, `move_block`
+- `v0.1.5`: Shrinks MCP exposure to 4 aggregated tools and adds notebook-level permission guards with high-risk action confirmations
+- `v0.1.4`: Auto-generates the MCP config file on first install, so clients can connect out of the box
+- `v0.1.3`: Removes unrelated config noise and keeps the plugin focused on MCP capabilities
+- `v0.1.2`: Merges MCP tool config into one entry and adds dual-path fallback for more reliable loading
 
-If your client supports and displays MCP instructions, the AI will first ask "I will execute X. Proceed?" and only call the tool after user confirmation. You can also emphasize these conventions in your project or Cursor rules.
+## High-Risk Actions
 
-**❕ We also provide toggle buttons for all tools in the settings. If you are concerned, you can disable them in the settings.**
+The server instructions require explicit user confirmation before these actions are called:
+
+- `notebook(action="remove")`
+- `document(action="remove")`
+- `document(action="move")`
+- `block(action="delete")`
+- `block(action="move")`
+
+If your client shows MCP instructions, the model should ask for confirmation before executing them.
+
+In the default fallback config, `document(action="move")` and `block(action="move")` are still exposed. They are not safe to call without confirmation just because they are enabled.
 
 ## Installation
 
@@ -28,30 +54,19 @@ If your client supports and displays MCP instructions, the AI will first ask "I 
 
 1. Open SiYuan Note
 2. Go to Settings > Marketplace
-3. Search for "SiYuan MCP"
+3. Search for `SiYuan MCP`
 4. Install and enable the plugin
 
 ### From Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/your-repo/siyuan-plugins-mcp-sisyphus.git
-
-# Install dependencies
 pnpm install
-
-# Build
 pnpm run build
-
-# Link for development
 pnpm run make-link
 ```
 
-## Usage
-
-### MCP Client Configuration
-
-Configure the MCP server in your preferred client. Any client supporting the MCP stdio protocol can connect using:
+## MCP Client Configuration
 
 ```json
 {
@@ -64,91 +79,181 @@ Configure the MCP server in your preferred client. Any client supporting the MCP
 }
 ```
 
-**Note:** The folder name in the path must match the `name` in plugin.json: `siyuan-plugins-mcp-sisyphus`. If you see `Cannot find module '.../mcp-server.cjs'`, check that (1) `mcp-server.cjs` exists at that path, and (2) the folder name is correct (e.g. not `siyuan-mcp-sisyphus`).
+The folder name in the path must match `plugin.json`: `siyuan-plugins-mcp-sisyphus`.
 
-#### OpenClaw / mcporter users
+OpenClaw / mcporter users can follow [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md).
 
-When using OpenClaw or mcporter, read [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md) and follow its steps to add this MCP via `mcporter config add` and verify.
+## Tool Model
 
-### Tool toggles
+### `notebook`
 
-- In SiYuan: **Settings → Plugins → SiYuan MCP sisyphus** to enable/disable each MCP tool. Config is stored in plugin data (`mcpToolsConfig`).
+Actions:
 
-## Available Tools
+- `list`
+- `create`
+- `open`
+- `close`
+- `remove`
+- `rename`
+- `get_conf`
+- `set_conf`
+- `get_permissions`
+- `set_permission`
+- `get_child_docs`
 
-### Notebook Operations (8 tools)
+Example:
 
-| Tool                  | Description                         |
-| --------------------- | ----------------------------------- |
-| `list_notebooks`    | List all notebooks in the workspace |
-| `create_notebook`   | Create a new notebook               |
-| `open_notebook`     | Open a notebook                     |
-| `close_notebook`    | Close a notebook                    |
-| `remove_notebook`   | Remove a notebook                   |
-| `rename_notebook`   | Rename a notebook                   |
-| `get_notebook_conf` | Get notebook configuration          |
-| `set_notebook_conf` | Set notebook configuration          |
+```json
+{
+  "name": "notebook",
+  "arguments": {
+    "action": "rename",
+    "notebook": "20210808180117-czj9bvb",
+    "name": "Research"
+  }
+}
+```
 
-### Document Operations (11 tools)
+### `document`
 
-| Tool                      | Description                                 |
-| ------------------------- | ------------------------------------------- |
-| `create_document`       | Create a new document with markdown content |
-| `rename_document`       | Rename a document by path                   |
-| `rename_document_by_id` | Rename a document by ID                     |
-| `remove_document`       | Remove a document by path                   |
-| `remove_document_by_id` | Remove a document by ID                     |
-| `move_documents`        | Move multiple documents to a new location   |
-| `move_documents_by_id`  | Move multiple documents by ID               |
-| `get_document_path`     | Get file path by document ID                |
-| `get_hpath_by_path`     | Get hierarchical path by file path          |
-| `get_hpath_by_id`       | Get hierarchical path by document ID        |
-| `get_ids_by_hpath`      | Get document IDs by hierarchical path       |
+Actions:
 
-### Block Operations (13 tools)
+- `create`
+- `rename`
+- `remove`
+- `move`
+- `get_path`
+- `get_hpath`
+- `get_ids`
+- `get_child_blocks`
+- `get_child_docs`
 
-| Tool                   | Description                               |
-| ---------------------- | ----------------------------------------- |
-| `insert_block`       | Insert a new block at specified position  |
-| `prepend_block`      | Insert a block at the beginning of parent |
-| `append_block`       | Insert a block at the end of parent       |
-| `update_block`       | Update block content                      |
-| `delete_block`       | Delete a block                            |
-| `move_block`         | Move a block to new position              |
-| `fold_block`         | Fold a block (collapse children)          |
-| `unfold_block`       | Unfold a block (expand children)          |
-| `get_block_kramdown` | Get block content in kramdown format      |
-| `get_child_blocks`   | Get all child blocks of a parent          |
-| `transfer_block_ref` | Transfer block references                 |
-| `set_block_attrs`    | Set block attributes                      |
-| `get_block_attrs`    | Get block attributes                      |
+Path semantics:
 
-### File Operations (9 tools)
+- `create.path` is a human-readable target path such as `/Inbox/Weekly Note`
+- `rename`, `remove`, `move`, and `get_hpath` use storage paths when you choose the `notebook + path` shape
+- `get_path` converts `id -> storage path`
+- `get_hpath` and `get_ids` convert between storage paths and human-readable hierarchical paths
+- `get_child_blocks` returns direct child blocks for a document ID
+- `get_child_docs` returns direct child documents for a document ID
 
-| Tool                  | Description                             |
-| --------------------- | --------------------------------------- |
-| `upload_asset`      | Upload file to assets directory         |
-| `render_template`   | Render a template with document context |
-| `render_sprig`      | Render a Sprig template                 |
-| `export_md_content` | Export document as Markdown             |
-| `export_resources`  | Export resources as ZIP                 |
-| `push_msg`          | Push a notification message             |
-| `push_err_msg`      | Push an error message                   |
-| `get_version`       | Get SiYuan version                      |
-| `get_current_time`  | Get current system time                 |
+`create` does not create missing parent paths for you. Prefer creating at notebook root or under an already existing parent path.
+
+`rename`, `remove`, `move`, and `get_hpath` support more than one argument shape. For example, `rename` can use either `id + title` or `notebook + path + title`.
+
+Example:
+
+```json
+{
+  "name": "document",
+  "arguments": {
+    "action": "rename",
+    "id": "20240318112233-abc123",
+    "title": "Weekly Notes"
+  }
+}
+```
+
+Direct child documents at notebook root:
+
+```json
+{
+  "name": "notebook",
+  "arguments": {
+    "action": "get_child_docs",
+    "notebook": "20210808180117-czj9bvb"
+  }
+}
+```
+
+### `block`
+
+Actions:
+
+- `insert`
+- `prepend`
+- `append`
+- `update`
+- `delete`
+- `move`
+- `fold`
+- `unfold`
+- `get_kramdown`
+- `get_children`
+- `transfer_ref`
+- `set_attrs`
+- `get_attrs`
+
+`prepend` with a document ID inserts at the start of the document. `append` with a document ID inserts at the end of the document. With a block ID, both operate on that block's child list.
+
+`fold` and `unfold` should be used with foldable block IDs.
+
+Example:
+
+```json
+{
+  "name": "block",
+  "arguments": {
+    "action": "append",
+    "dataType": "markdown",
+    "data": "- New item",
+    "parentID": "20240318112233-abc123"
+  }
+}
+```
+
+### `file`
+
+Actions:
+
+- `upload_asset`
+- `render_template`
+- `render_sprig`
+- `export_md`
+- `export_resources`
+- `push_msg`
+- `push_err_msg`
+- `get_version`
+- `get_current_time`
+
+Example:
+
+```json
+{
+  "name": "file",
+  "arguments": {
+    "action": "get_version"
+  }
+}
+```
+
+## Tool Toggles
+
+In SiYuan, open `Settings -> Plugins -> SiYuan MCP sisyphus`.
+
+- Each aggregated tool has a top-level enable switch
+- Each action can still be enabled or disabled individually
+- The default fallback config exposes move actions but not delete-style actions
+- Existing old-style configs are migrated automatically into the new format
 
 ## Development
 
-### Project Structure
+Live smoke test against a local SiYuan instance:
 
+```bash
+pnpm run build
+node scripts/live_mcp_smoke.cjs
 ```
+
+```text
 siyuan-plugins-mcp-sisyphus/
 ├── src/
 │   ├── api/           # SiYuan API wrappers
 │   ├── mcp/           # MCP server implementation
-│   │   ├── tools/     # Tool implementations
+│   │   ├── tools/     # Aggregated tool handlers
+│   │   ├── config.ts  # Tool config and migration helpers
 │   │   ├── server.ts  # Main server
-│   │   └── types.ts   # Type definitions
+│   │   └── types.ts   # Action-level validation
 │   └── index.ts       # Plugin entry point
 ├── public/i18n/       # Internationalization
 └── package.json

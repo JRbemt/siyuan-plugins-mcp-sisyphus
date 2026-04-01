@@ -17,7 +17,7 @@ export class SiYuanError extends Error {
 }
 
 export const errorCodeMap: {[code: number]: string} = {
-    -1: 'Unknown error',
+    "-1": 'Unknown error',
     0: 'Success',
     1: 'Invalid parameter',
     2: 'Unsupported operation',

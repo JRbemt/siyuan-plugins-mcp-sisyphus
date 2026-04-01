@@ -1,5 +1,23 @@
 import { SiYuanClient } from './client';
-import type { DataType, IReqInsertBlock, IReqPrependBlock, IReqAppendBlock, IReqUpdateBlock, IReqDeleteBlock, IReqMoveBlock, IReqFoldBlock, IReqUnfoldBlock, IReqGetBlockKramdown, IReqGetChildBlocks, IReqTransferBlockRef, IResInsertBlock, IResGetBlockKramdown, IResGetChildBlock } from '../types/api';
+import type {
+    DataType,
+    IReqAppendBlock,
+    IReqDeleteBlock,
+    IReqFoldBlock,
+    IReqGetBlockKramdown,
+    IReqGetChildBlocks,
+    IReqGetDocInfo,
+    IReqInsertBlock,
+    IReqMoveBlock,
+    IReqPrependBlock,
+    IReqTransferBlockRef,
+    IReqUnfoldBlock,
+    IReqUpdateBlock,
+    IResGetChildBlock,
+    IResGetBlockKramdown,
+    IResGetDocInfo,
+    IResInsertBlock,
+} from '../types/api';
 
 /**
  * Insert a new block at the specified position
@@ -128,6 +146,14 @@ export async function getBlockKramdown(client: SiYuanClient, id: string): Promis
 export async function getChildBlocks(client: SiYuanClient, id: string): Promise<IResGetChildBlock[]> {
     const request: IReqGetChildBlocks = { id };
     return client.request<IResGetChildBlock[]>('/api/block/getChildBlocks', request);
+}
+
+/**
+ * Get owning document info for a block or document ID
+ */
+export async function getDocInfo(client: SiYuanClient, id: string): Promise<IResGetDocInfo> {
+    const request: IReqGetDocInfo = { id };
+    return client.request<IResGetDocInfo>('/api/block/getDocInfo', request);
 }
 
 /**

@@ -2,7 +2,7 @@
   "name": "siyuan-plugins-mcp-sisyphus",
   "author": "Taihong Yang",
   "url": "https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "minAppVersion": "2.9.0",
   "backends": ["all"],
   "frontends": ["all"],
@@ -12,8 +12,8 @@
     "zh_CN": "思源 MCP sisyphus"
   },
   "description": {
-    "default": "Let AI control your notes, provide MCP server for SiYuan, support 41 tools for AI integration with SiYuan through the Model Context Protocol.",
-    "zh_CN": "让AI控制你的笔记, 为思源笔记提供 MCP 服务, 支持 41 个工具, 支持 AI 与思源笔记的深度集成。"
+    "default": "Let AI control your notes with a SiYuan MCP server that exposes 4 aggregated tools with action-level routing for deep AI integration.",
+    "zh_CN": "让 AI 通过思源 MCP 服务控制你的笔记。当前对外暴露 4 个聚合工具，并通过 action 路由实现深度集成。"
   },
   "readme": {
     "default": "README.md",

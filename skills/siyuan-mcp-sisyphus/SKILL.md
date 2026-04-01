@@ -1,111 +1,137 @@
 ---
 name: siyuan-mcp-sisyphus
-description: 使用 mcporter 连接 SiYuan MCP server (siyuan-mcp-sisyphus)。用于操作 SiYuan 笔记：列出笔记本、读写文档、块操作等。
+description: Operate SiYuan notes via 4 aggregated MCP tools (notebook/document/block/file). Covers path semantics, permissions, block editing, and export.
 ---
 
 # SiYuan MCP Sisyphus
 
-通过 mcporter 调用 SiYuan 笔记的 MCP 工具。
+4 aggregated MCP tools for SiYuan note operations. Each tool takes an `action` parameter. Full parameter schemas are in the tool descriptions — this skill covers pitfalls and non-obvious behavior.
 
-## MCP 自我介绍
+## Recommended Workflow
 
-```
-SiYuan MCP Sisyphus(version 0.1.3)
+1. **Explore**: `notebook(action="list")`, `file(action="get_version")`
+2. **Locate**: `document(action="get_path" | "get_hpath" | "get_ids")`
+3. **Write**: `document(action="create" | "rename" | "move")`, `block(action="append" | "update" | ...)`
+4. **Verify**: `document(action="get_child_blocks")` or `block(action="get_children")`
 
-高危操作确认：
-在调用以下工具之前，必须先向用户明确说明操作并等待确认。
+## Path Semantics (Critical)
 
-必须确认的工具：
-- remove_notebook, remove_document, remove_document_by_id（删除）
-- delete_block（删除块）
-- move_documents, move_documents_by_id, move_block（移动）
+There are exactly **two** path types. Do not mix them.
 
-append_block 行为：
-- parentID 为文档ID → 在文档开头添加块
-- parentID 为块ID → 在块末尾添加块
-```
+| Type | Used by | Example |
+|------|---------|---------|
+| **Human-readable** | `document.create`, `document.get_ids` | `/Inbox/Weekly Note` |
+| **Storage path** | `document.rename`, `document.remove`, `document.move`, `document.get_hpath` (with notebook+path) | `/20240318112233-abc123.sy` |
 
-## 添加 MCP Server
+**Safe workflow**: call `document(action="get_path", id=...)` first, then reuse the returned storage path for path-based actions.
 
-```bash
-# 自动检测思源路径 ($HOME/SiYuan/data/)
-mcporter config add siyuan-mcp-sisyphus --command "node" --arg "$HOME/SiYuan/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"
+## Disabled-by-Default Actions
 
-# 验证配置
-mcporter list siyuan-mcp-sisyphus --schema
-```
+These actions are disabled in the default plugin configuration. Calling them returns `{error: {type: "action_disabled"}}`. They must be enabled in SiYuan plugin settings first.
 
-## 工具列表 (41个)
+| Tool | Action |
+|------|--------|
+| notebook | `remove` |
+| notebook | `set_permission` |
+| document | `remove` |
+| block | `delete` |
 
-### Notebook 操作
-| 工具 | 描述 | 危险 |
-|------|------|------|
-| `list_notebooks` | 列出所有笔记本 | |
-| `create_notebook name="名称"` | 创建笔记本 | |
-| `open_notebook notebook="ID"` | 打开笔记本 | |
-| `close_notebook notebook="ID"` | 关闭笔记本 | |
-| `rename_notebook notebook="ID" name="新名称"` | 重命名笔记本 | |
-| `get_notebook_conf notebook="ID"` | 获取配置 | |
-| `set_notebook_conf notebook="ID" conf='{}'` | 设置配置 | |
-| `remove_notebook notebook="ID"` | 删除笔记本 | ⚠️ |
+Warn the user before attempting these — they may need to enable them manually.
 
-### Document 操作
-| 工具 | 描述 | 危险 |
-|------|------|------|
-| `create_document notebook="ID" path="/路径" markdown="内容"` | 创建文档 | |
-| `rename_document notebook="ID" path="/路径" title="标题"` | 重命名文档 | |
-| `rename_document_by_id id="ID" title="标题"` | 通过ID重命名 | |
-| `get_document_path id="ID"` | 获取文档路径 | |
-| `get_hpath_by_id id="ID"` | 获取层级路径 | |
-| `get_hpath_by_path notebook="ID" path="/路径"` | 路径转层级 | |
-| `get_ids_by_hpath path="/路径" notebook="ID"` | 层级转ID | |
-| `move_documents fromPaths='["/a","/b"]' toNotebook="ID" toPath="/c"` | 移动文档 | ⚠️ |
-| `move_documents_by_id fromIDs='["ID1","ID2"]' toID="目标ID"` | 通过ID移动 | ⚠️ |
-| `remove_document notebook="ID" path="/路径"` | 删除文档 | ⚠️ |
-| `remove_document_by_id id="ID"` | 通过ID删除 | ⚠️ |
+## Permission System
 
-### Block 操作
-| 工具 | 描述 | 危险 |
-|------|------|------|
-| `append_block dataType="markdown" data="内容" parentID="父块ID"` | 追加块 | |
-| `prepend_block dataType="markdown" data="内容" parentID="父块ID"` | 开头插入 | |
-| `insert_block dataType="markdown" data="内容" parentID="父块ID" nextID="后块ID"` | 定位插入 | |
-| `update_block dataType="markdown" data="内容" id="块ID"` | 更新块 | |
-| `delete_block id="块ID"` | 删除块 | ⚠️ |
-| `move_block id="块ID" previousID="前块ID" parentID="新父块ID"` | 移动块 | ⚠️ |
-| `get_block_kramdown id="块ID"` | 获取块内容 | |
-| `get_child_blocks id="块ID"` | 获取子块 | |
-| `fold_block id="块ID"` | 折叠块 | |
-| `unfold_block id="块ID"` | 展开块 | |
-| `set_block_attrs id="块ID" attrs='{"自定义":"值"}'` | 设置属性 | |
-| `get_block_attrs id="块ID"` | 获取属性 | |
-| `transfer_block_ref fromID="源ID" toID="目标ID"` | 转移引用 | |
+Three levels per notebook: `write` (full access), `readonly` (read only), `none` (all blocked).
 
-### 实用工具
-| 工具 | 描述 |
-|------|------|
-| `get_version` | 获取 SiYuan 版本 |
-| `get_current_time` | 获取当前时间 |
-| `push_msg msg="消息" timeout=3000` | 推送通知 |
-| `push_err_msg msg="错误消息" timeout=3000` | 推送错误 |
-| `render_template id="文档ID" path="/模板路径"` | 渲染模板 |
-| `render_sprig template="Sprig模板"` | 渲染 Sprig |
-| `export_md_content id="文档ID"` | 导出 Markdown |
-| `export_resources paths='["/path1"]' name="文件名"` | 导出资源 |
+Check with `notebook(action="get_permissions")`. Change with `notebook(action="set_permission")`.
 
-## 使用示例
-
-```bash
-# 列出笔记本
-mcporter call siyuan-mcp-sisyphus.list_notebooks
-
-# 获取文档内容
-mcporter call siyuan-mcp-sisyphus.get_block_kramdown id="20260216145857-bytcd77"
-
-# 在文档开头添加内容
-mcporter call siyuan-mcp-sisyphus.append_block dataType="markdown" data="# 新标题" parentID="文档ID"
+On denial, the error includes actionable context:
+```json
+{
+  "error": {
+    "type": "permission_denied",
+    "notebook": "20260401...",
+    "current_permission": "readonly",
+    "required_permission": "write"
+  }
+}
 ```
 
-## 禁用高危工具
+## Dangerous Actions (Require User Confirmation)
 
-如果需要禁用高危工具，前往设置编辑思源插件配置
+Before calling any of these, describe the action and wait for explicit user agreement:
+
+- `notebook(action="remove")` — if enabled
+- `document(action="remove")` — if enabled
+- `document(action="move")`
+- `block(action="delete")` — if enabled
+- `block(action="move")`
+
+## Action Reference
+
+### `notebook`
+
+| Action | Type | Notes |
+|--------|------|-------|
+| `list` | read | Returns all notebooks with id, name, sort info |
+| `create` | write | Requires `name` |
+| `open` / `close` | read | Open/close a notebook by ID |
+| `rename` | write | Requires `notebook` + `name` |
+| `get_conf` / `set_conf` | read/write | `set_conf` takes a `conf` object (name, closed, dailyNoteSavePath, etc.) |
+| `get_permissions` | read | Returns all notebooks with their permission level |
+| `set_permission` | write | **Disabled by default.** Set `none` / `readonly` / `write` |
+| `get_child_docs` | read | Direct children at notebook root. `.name` field has `.sy` suffix (filename, not title) |
+
+### `document`
+
+| Action | Type | Notes |
+|--------|------|-------|
+| `create` | write | `notebook` + `path` (human-readable) + `markdown`. Parent paths must already exist |
+| `rename` | write | Either `id` + `title` OR `notebook` + `path` (storage) + `title` |
+| `remove` | write | **Disabled by default.** Either `id` OR `notebook` + `path` (storage) |
+| `move` | write | Either `fromIDs` + `toID` OR `fromPaths` + `toNotebook` + `toPath` (storage) |
+| `get_path` | read | Returns `{notebook, path}` — the storage path for an ID |
+| `get_hpath` | read | Returns human-readable hierarchy path. Either `id` OR `notebook` + `path` (storage) |
+| `get_ids` | read | `notebook` + `path` (human-readable). Returns array of document IDs |
+| `get_child_blocks` | read | Direct child blocks of a document. Same result as `block.get_children` with a doc ID |
+| `get_child_docs` | read | Direct child documents. `.name` has `.sy` suffix |
+
+### `block`
+
+| Action | Type | Notes |
+|--------|------|-------|
+| `insert` | write | `dataType` + `data`. Position: `nextID` = insert BEFORE that block, `previousID` = insert AFTER. Provide at least one of `nextID`, `previousID`, `parentID` |
+| `prepend` | write | Inserts at start. `parentID` as doc ID → document head; as block ID → that block's child list |
+| `append` | write | Inserts at end. Same parentID semantics as prepend |
+| `update` | write | `dataType` + `data` + `id`. Replaces block content |
+| `delete` | write | **Disabled by default.** Requires `id` |
+| `move` | write | `id` + at least one of `previousID` / `parentID`. May return null — use `get_children` to verify |
+| `fold` / `unfold` | write | Must be a foldable block ID, NOT a document ID |
+| `get_kramdown` | read | Returns block content in kramdown format with IAL attributes |
+| `get_children` | read | Works with both document IDs AND block IDs. Returns direct children |
+| `transfer_ref` | write | `fromID` + `toID`. `refIDs` is optional |
+| `set_attrs` / `get_attrs` | write/read | Block custom attributes |
+
+### `file`
+
+| Action | Type | Notes |
+|--------|------|-------|
+| `get_version` | read | Returns `{version: "3.x.x"}` |
+| `get_current_time` | read | Returns `{currentTime: <epoch_ms>}` (milliseconds since epoch, not formatted) |
+| `render_sprig` | read | Sprig/Go template rendering. Example: `{{now \| date "2006-01-02"}}` |
+| `render_template` | read | Render a template file with document context. Requires `id` + `path` (absolute file path) |
+| `export_md` | read | Returns `{content: "---\ntitle: ...\n---\n...", hPath: "/..."}` — full markdown with frontmatter |
+| `upload_asset` | write | `assetsDirPath` + `file` (base64) + `fileName` |
+| `export_resources` | read | Exports paths as ZIP. Optional `name` for the archive |
+| `push_msg` | — | Show notification in SiYuan UI. Optional `timeout` in ms |
+| `push_err_msg` | — | Show error notification. Optional `timeout` in ms |
+
+## MCP Help Resources
+
+The server exposes help resources readable via `ReadMcpResourceTool`:
+
+- `siyuan://help/tool-overview` — all tools, enabled actions, and guidance
+- `siyuan://help/document-path-semantics` — path type details with examples
+- `siyuan://help/examples` — minimal call examples for common actions
+- `siyuan://help/action/{tool}/{action}` — per-action help with parameter shapes
+
+Use these for on-demand reference during a session.

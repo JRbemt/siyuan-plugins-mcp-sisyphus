@@ -31,6 +31,11 @@ pnpm build  # 生产构建成功
 # - package.zip (302 kB) - 完整包
 ```
 
+###¥ 实测验证
+```bash
+/Applications/SiYuan.app/Contents/MacOS/SiYuan --remote-debugging-port=9222 # 启动思源
+
+```
 ### 项目结构（基于 Vite + Svelte）
 ```
 src/

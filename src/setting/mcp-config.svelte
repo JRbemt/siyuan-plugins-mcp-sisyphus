@@ -1,273 +1,290 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { showMessage } from "siyuan";
+
+    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type BlockAction, type DocumentAction, type FileAction, type NotebookAction, type ToolCategory, type ToolConfig } from "./tool-config";
+    import { loadPersistedToolConfig, savePersistedToolConfig } from "./tool-config-storage";
     import SettingPanel from "../libs/components/setting-panel.svelte";
-    // Props from plugin
+
     export let plugin: any;
 
-    // Tool key mapping: internal key -> display key
-    const toolKeyMap: Record<string, string> = {
-        // Notebooks
-        'notebooks_list_notebooks': 'list_notebooks',
-        'notebooks_create_notebook': 'create_notebook',
-        'notebooks_open_notebook': 'open_notebook',
-        'notebooks_close_notebook': 'close_notebook',
-        'notebooks_remove_notebook': 'remove_notebook',
-        'notebooks_rename_notebook': 'rename_notebook',
-        'notebooks_get_notebook_conf': 'get_notebook_conf',
-        'notebooks_set_notebook_conf': 'set_notebook_conf',
-        // Documents
-        'documents_create_document': 'create_document',
-        'documents_rename_document': 'rename_document',
-        'documents_rename_document_by_id': 'rename_document_by_id',
-        'documents_remove_document': 'remove_document',
-        'documents_remove_document_by_id': 'remove_document_by_id',
-        'documents_move_documents': 'move_documents',
-        'documents_move_documents_by_id': 'move_documents_by_id',
-        'documents_get_document_path': 'get_document_path',
-        'documents_get_hpath_by_path': 'get_hpath_by_path',
-        'documents_get_hpath_by_id': 'get_hpath_by_id',
-        'documents_get_ids_by_hpath': 'get_ids_by_hpath',
-        // Blocks
-        'blocks_insert_block': 'insert_block',
-        'blocks_prepend_block': 'prepend_block',
-        'blocks_append_block': 'append_block',
-        'blocks_update_block': 'update_block',
-        'blocks_delete_block': 'delete_block',
-        'blocks_move_block': 'move_block',
-        'blocks_fold_block': 'fold_block',
-        'blocks_unfold_block': 'unfold_block',
-        'blocks_get_block_kramdown': 'get_block_kramdown',
-        'blocks_get_child_blocks': 'get_child_blocks',
-        'blocks_transfer_block_ref': 'transfer_block_ref',
-        'blocks_set_block_attrs': 'set_block_attrs',
-        'blocks_get_block_attrs': 'get_block_attrs',
-        // Files
-        'files_upload_asset': 'upload_asset',
-        'files_render_template': 'render_template',
-        'files_render_sprig': 'render_sprig',
-        'files_export_md_content': 'export_md_content',
-        'files_export_resources': 'export_resources',
-        'files_push_msg': 'push_msg',
-        'files_push_err_msg': 'push_err_msg',
-        'files_get_version': 'get_version',
-        'files_get_current_time': 'get_current_time',
-    };
+    type GroupAction = NotebookAction | DocumentAction | BlockAction | FileAction;
+    type NotebookPermission = 'none' | 'readonly' | 'write';
 
-    // Default config (all tools enabled, except dangerous delete operations)
-    const defaultConfig: Record<string, boolean> = {};
-    Object.values(toolKeyMap).forEach(key => {
-        defaultConfig[key] = true;
-    });
-    // Disable dangerous delete operations by default
-    defaultConfig['remove_notebook'] = false;
-    defaultConfig['remove_document'] = false;
-    defaultConfig['remove_document_by_id'] = false;
-    defaultConfig['delete_block'] = false;
+    interface GroupDefinition {
+        category: ToolCategory;
+        icon: string;
+        groupKey: string;
+        actions: Array<{
+            key: GroupAction;
+            title: string;
+            description: string;
+        }>;
+    }
 
-    // Current config - reactive
-    let config: Record<string, boolean> = { ...defaultConfig };
+    const GROUP_DEFINITIONS: GroupDefinition[] = [
+        {
+            category: "notebook",
+            icon: "📚",
+            groupKey: "Notebooks",
+            actions: [
+                { key: "list", title: "List Notebooks", description: "List all notebooks in the workspace." },
+                { key: "create", title: "Create Notebook", description: "Create a new notebook." },
+                { key: "open", title: "Open Notebook", description: "Open a notebook." },
+                { key: "close", title: "Close Notebook", description: "Close a notebook." },
+                { key: "remove", title: "Remove Notebook", description: "Remove a notebook." },
+                { key: "rename", title: "Rename Notebook", description: "Rename a notebook." },
+                { key: "get_conf", title: "Get Notebook Config", description: "Get notebook configuration." },
+                { key: "set_conf", title: "Set Notebook Config", description: "Set notebook configuration." },
+                { key: "get_permissions", title: "Get Notebook Permissions", description: "Get MCP access permissions for all notebooks." },
+                { key: "set_permission", title: "Set Notebook Permission", description: "Set MCP access permission for a notebook." },
+                { key: "get_child_docs", title: "Get Child Documents", description: "Get direct child documents at the notebook root." },
+            ],
+        },
+        {
+            category: "document",
+            icon: "📝",
+            groupKey: "Documents",
+            actions: [
+                { key: "create", title: "Create Document", description: "Create a new document with markdown content at a human-readable target path." },
+                { key: "rename", title: "Rename Document", description: "Rename a document by ID or storage path." },
+                { key: "remove", title: "Remove Document", description: "Remove a document by ID or storage path." },
+                { key: "move", title: "Move Documents", description: "Move multiple documents by ID or storage path." },
+                { key: "get_path", title: "Get Document Path", description: "Get a storage path by document ID." },
+                { key: "get_hpath", title: "Get Hierarchical Path", description: "Get a hierarchical path by ID or storage path." },
+                { key: "get_ids", title: "Get IDs by Hierarchical Path", description: "Get document IDs by hierarchical path." },
+                { key: "get_child_blocks", title: "Get Child Blocks", description: "Get direct child blocks by document ID." },
+                { key: "get_child_docs", title: "Get Child Documents", description: "Get direct child documents by document ID." },
+            ],
+        },
+        {
+            category: "block",
+            icon: "🧱",
+            groupKey: "Blocks",
+            actions: [
+                { key: "insert", title: "Insert Block", description: "Insert a new block at a specified position." },
+                { key: "prepend", title: "Prepend Block", description: "Insert a block at the beginning of a parent." },
+                { key: "append", title: "Append Block", description: "Insert a block at the end of a parent." },
+                { key: "update", title: "Update Block", description: "Update block content." },
+                { key: "delete", title: "Delete Block", description: "Delete a block." },
+                { key: "move", title: "Move Block", description: "Move a block to a new position." },
+                { key: "fold", title: "Fold Block", description: "Fold a foldable block." },
+                { key: "unfold", title: "Unfold Block", description: "Unfold a foldable block." },
+                { key: "get_kramdown", title: "Get Block Kramdown", description: "Get block content in kramdown format." },
+                { key: "get_children", title: "Get Child Blocks", description: "Get all child blocks of a parent." },
+                { key: "transfer_ref", title: "Transfer Block Reference", description: "Transfer block references." },
+                { key: "set_attrs", title: "Set Block Attributes", description: "Set block attributes." },
+                { key: "get_attrs", title: "Get Block Attributes", description: "Get block attributes." },
+            ],
+        },
+        {
+            category: "file",
+            icon: "📁",
+            groupKey: "Files",
+            actions: [
+                { key: "upload_asset", title: "Upload Asset", description: "Upload a file to the assets directory." },
+                { key: "render_template", title: "Render Template", description: "Render a template with document context." },
+                { key: "render_sprig", title: "Render Sprig", description: "Render a Sprig template." },
+                { key: "export_md", title: "Export Markdown Content", description: "Export document content as Markdown." },
+                { key: "export_resources", title: "Export Resources", description: "Export resources as a ZIP archive." },
+                { key: "push_msg", title: "Push Message", description: "Push a notification message." },
+                { key: "push_err_msg", title: "Push Error Message", description: "Push an error notification message." },
+                { key: "get_version", title: "Get Version", description: "Get the SiYuan system version." },
+                { key: "get_current_time", title: "Get Current Time", description: "Get the current system time." },
+            ],
+        },
+    ];
 
-    // Groups - use i18n
-    const defaultGroups = ["📚 Notebooks", "📝 Documents", "🧱 Blocks", "📁 Files"];
-    let groups: string[] = defaultGroups;
+    const PERM_GROUP_KEY = "Permissions";
+    const PERM_GROUP_LABEL = "🔒 Permissions";
+    const defaultGroups = [...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`), PERM_GROUP_LABEL];
+
+    let config: ToolConfig = buildDefaultToolConfig();
+    let groups = defaultGroups;
     let focusGroup = defaultGroups[0];
-    
-    // Update groups when plugin.i18n is available
-    $: if (plugin?.i18n && plugin.i18n.Notebooks) {
-        groups = [
-            `📚 ${plugin.i18n.Notebooks}`,
-            `📝 ${plugin.i18n.Documents}`,
-            `🧱 ${plugin.i18n.Blocks}`,
-            `📁 ${plugin.i18n.Files}`
-        ];
-        // Update focusGroup if current one is not in new groups
-        if (!groups.includes(focusGroup)) {
-            focusGroup = groups[0];
+
+    let notebookItems: ISettingItem[] = [];
+    let documentItems: ISettingItem[] = [];
+    let blockItems: ISettingItem[] = [];
+    let fileItems: ISettingItem[] = [];
+
+    // Permissions tab state
+    interface NotebookInfo { id: string; name: string; }
+    let notebooks: NotebookInfo[] = [];
+    let permissions: Record<string, NotebookPermission> = {};
+    let permItems: ISettingItem[] = [];
+    let permLoading = true;
+
+    const getLabel = (key: string, fallback: string) => plugin?.i18n?.[key] ?? fallback;
+
+    const getDangerTitle = (title: string) => `${title} ${getLabel("mcpHighRiskBadge", "[High risk]")}`;
+    const getDangerDescription = (description: string) => `${description} ${getLabel("mcpRequiresConfirmation", "Requires explicit user confirmation before execution.")} ${getLabel("mcpDefaultVisible", "This action stays visible in the default configuration.")}`;
+
+    const buildToolToggleItem = (definition: GroupDefinition): ISettingItem => ({
+        type: "checkbox",
+        key: `${definition.category}__enabled`,
+        value: config[definition.category].enabled,
+        title: getLabel(`${definition.category}_tool_title`, `${definition.groupKey} Tool`),
+        description: getLabel(`${definition.category}_tool_desc`, `Expose the grouped ${definition.category} tool to MCP clients.`),
+    });
+
+    const buildActionItems = (definition: GroupDefinition): ISettingItem[] => definition.actions.map((action) => {
+        const baseTitle = getLabel(`${definition.category}_action_${action.key}`, action.title);
+        const baseDescription = getLabel(`desc_${definition.category}_action_${action.key}`, action.description);
+        const dangerous = isDangerousAction(definition.category, action.key);
+
+        return {
+            type: "checkbox",
+            key: `${definition.category}__action__${action.key}`,
+            value: config[definition.category].actions[action.key as keyof typeof config[typeof definition.category]["actions"]],
+            title: dangerous ? getDangerTitle(baseTitle) : baseTitle,
+            description: dangerous ? getDangerDescription(baseDescription) : baseDescription,
+        };
+    });
+
+    function buildPermItems(): ISettingItem[] {
+        if (notebooks.length === 0) {
+            return [{
+                type: "hint",
+                key: "perm__hint",
+                value: permLoading ? "Loading notebooks..." : "No notebooks found.",
+                title: "",
+                description: "",
+            }];
         }
+        return notebooks.map((nb) => ({
+            type: "select",
+            key: `perm__${nb.id}`,
+            value: permissions[nb.id] ?? "write",
+            title: nb.name,
+            description: getLabel("mcpPermDesc", "MCP 访问权限：读写 / 只读 / 禁止访问"),
+            options: {
+                write: getLabel("mcpPermWrite", "读写"),
+                readonly: getLabel("mcpPermReadonly", "只读"),
+                none: getLabel("mcpPermNone", "禁止访问"),
+            },
+        }));
+    }
+
+    function refreshItems() {
+        notebookItems = [buildToolToggleItem(GROUP_DEFINITIONS[0]), ...buildActionItems(GROUP_DEFINITIONS[0])];
+        documentItems = [buildToolToggleItem(GROUP_DEFINITIONS[1]), ...buildActionItems(GROUP_DEFINITIONS[1])];
+        blockItems = [buildToolToggleItem(GROUP_DEFINITIONS[2]), ...buildActionItems(GROUP_DEFINITIONS[2])];
+        fileItems = [buildToolToggleItem(GROUP_DEFINITIONS[3]), ...buildActionItems(GROUP_DEFINITIONS[3])];
+        permItems = buildPermItems();
+    }
+
+    $: permGroupLabel = `🔒 ${getLabel(PERM_GROUP_KEY, PERM_GROUP_LABEL)}`;
+    $: groups = [...GROUP_DEFINITIONS.map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), permGroupLabel];
+    $: if (!groups.includes(focusGroup)) {
+        focusGroup = groups[0];
+    }
+    $: config, notebooks, permissions, refreshItems();
+
+    async function loadNotebooks() {
+        try {
+            const resp = await fetch("http://127.0.0.1:6806/api/notebook/lsNotebooks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+            });
+            const json = await resp.json();
+            notebooks = (json?.data?.notebooks ?? []).map((nb: any) => ({ id: nb.id, name: nb.name }));
+        } catch {
+            notebooks = [];
+        }
+        permLoading = false;
+        permItems = buildPermItems();
     }
 
     onMount(async () => {
-        if (plugin) {
-            const saved = await plugin.loadData('mcpToolsConfig');
-            if (saved) {
-                config = { ...defaultConfig, ...saved };
-            }
-            updateCheckboxValues();
+        config = await loadPersistedToolConfig(plugin);
+
+        const savedPerms = await plugin?.loadData("notebookPermissions");
+        if (savedPerms && typeof savedPerms === "object") {
+            permissions = savedPerms as Record<string, NotebookPermission>;
         }
+
+        await loadNotebooks();
     });
 
-    // Update all checkbox values in the setting items
-    function updateCheckboxValues() {
-        // Trigger reactive updates by reassigning
-        if (plugin?.i18n) {
-            notebooksItems = notebooksItems.map(item => ({
-                ...item,
-                value: config[toolKeyMap[item.key]] ?? defaultConfig[toolKeyMap[item.key]] ?? true
-            }));
-            documentsItems = documentsItems.map(item => ({
-                ...item,
-                value: config[toolKeyMap[item.key]] ?? defaultConfig[toolKeyMap[item.key]] ?? true
-            }));
-            blocksItems = blocksItems.map(item => ({
-                ...item,
-                value: config[toolKeyMap[item.key]] ?? defaultConfig[toolKeyMap[item.key]] ?? true
-            }));
-            filesItems = filesItems.map(item => ({
-                ...item,
-                value: config[toolKeyMap[item.key]] ?? defaultConfig[toolKeyMap[item.key]] ?? true
-            }));
+    function setCategoryEnabled(category: ToolCategory, enabled: boolean) {
+        config = {
+            ...config,
+            [category]: {
+                ...config[category],
+                enabled,
+            },
+        };
+    }
+
+    function setActionEnabled(category: ToolCategory, action: string, enabled: boolean) {
+        const nextActions = {
+            ...config[category].actions,
+            [action]: enabled,
+        };
+        const hasEnabledActions = Object.values(nextActions).some(Boolean);
+
+        config = {
+            ...config,
+            [category]: {
+                enabled: enabled ? true : hasEnabledActions ? config[category].enabled : false,
+                actions: nextActions,
+            },
+        };
+    }
+
+    async function persistConfig() {
+        if (plugin) {
+            config = await savePersistedToolConfig(config, plugin);
         }
     }
 
-    // Notebooks: 8 tools - use i18n
-    let notebooksItems: ISettingItem[] = [
-        { type: 'checkbox', title: 'list_notebooks', description: 'List all notebooks in the workspace', key: 'notebooks_list_notebooks', value: true },
-        { type: 'checkbox', title: 'create_notebook', description: 'Create a new notebook', key: 'notebooks_create_notebook', value: true },
-        { type: 'checkbox', title: 'open_notebook', description: 'Open a notebook', key: 'notebooks_open_notebook', value: true },
-        { type: 'checkbox', title: 'close_notebook', description: 'Close a notebook', key: 'notebooks_close_notebook', value: true },
-        { type: 'checkbox', title: 'remove_notebook', description: 'Remove a notebook', key: 'notebooks_remove_notebook', value: false },
-        { type: 'checkbox', title: 'rename_notebook', description: 'Rename a notebook', key: 'notebooks_rename_notebook', value: true },
-        { type: 'checkbox', title: 'get_notebook_conf', description: 'Get notebook configuration', key: 'notebooks_get_notebook_conf', value: true },
-        { type: 'checkbox', title: 'set_notebook_conf', description: 'Set notebook configuration', key: 'notebooks_set_notebook_conf', value: true },
-    ];
-    $: if (plugin?.i18n) {
-        notebooksItems = [
-        { type: 'checkbox', title: plugin.i18n.list_notebooks, description: plugin.i18n.desc_list_notebooks, key: 'notebooks_list_notebooks', value: true },
-        { type: 'checkbox', title: plugin.i18n.create_notebook, description: plugin.i18n.desc_create_notebook, key: 'notebooks_create_notebook', value: true },
-        { type: 'checkbox', title: plugin.i18n.open_notebook, description: plugin.i18n.desc_open_notebook, key: 'notebooks_open_notebook', value: true },
-        { type: 'checkbox', title: plugin.i18n.close_notebook, description: plugin.i18n.desc_close_notebook, key: 'notebooks_close_notebook', value: true },
-        { type: 'checkbox', title: plugin.i18n.remove_notebook, description: plugin.i18n.desc_remove_notebook, key: 'notebooks_remove_notebook', value: false },
-        { type: 'checkbox', title: plugin.i18n.rename_notebook, description: plugin.i18n.desc_rename_notebook, key: 'notebooks_rename_notebook', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_notebook_conf, description: plugin.i18n.desc_get_notebook_conf, key: 'notebooks_get_notebook_conf', value: true },
-        { type: 'checkbox', title: plugin.i18n.set_notebook_conf, description: plugin.i18n.desc_set_notebook_conf, key: 'notebooks_set_notebook_conf', value: true },
-        ];
+    async function persistPermissions() {
+        if (plugin) {
+            await plugin.saveData("notebookPermissions", permissions);
+        }
     }
 
-    // Documents: 11 tools - use i18n
-    let documentsItems: ISettingItem[] = [
-        { type: 'checkbox', title: 'create_document', description: 'Create a new document with markdown content', key: 'documents_create_document', value: true },
-        { type: 'checkbox', title: 'rename_document', description: 'Rename a document by path', key: 'documents_rename_document', value: true },
-        { type: 'checkbox', title: 'rename_document_by_id', description: 'Rename a document by ID', key: 'documents_rename_document_by_id', value: true },
-        { type: 'checkbox', title: 'remove_document', description: 'Remove a document by path', key: 'documents_remove_document', value: false },
-        { type: 'checkbox', title: 'remove_document_by_id', description: 'Remove a document by ID', key: 'documents_remove_document_by_id', value: false },
-        { type: 'checkbox', title: 'move_documents', description: 'Move multiple documents to a new location', key: 'documents_move_documents', value: true },
-        { type: 'checkbox', title: 'move_documents_by_id', description: 'Move multiple documents by ID', key: 'documents_move_documents_by_id', value: true },
-        { type: 'checkbox', title: 'get_document_path', description: 'Get file path by document ID', key: 'documents_get_document_path', value: true },
-        { type: 'checkbox', title: 'get_hpath_by_path', description: 'Get hierarchical path by file path', key: 'documents_get_hpath_by_path', value: true },
-        { type: 'checkbox', title: 'get_hpath_by_id', description: 'Get hierarchical path by document ID', key: 'documents_get_hpath_by_id', value: true },
-        { type: 'checkbox', title: 'get_ids_by_hpath', description: 'Get document IDs by hierarchical path', key: 'documents_get_ids_by_hpath', value: true },
-    ];
-    $: if (plugin?.i18n) {
-        documentsItems = [
-        { type: 'checkbox', title: plugin.i18n.create_document, description: plugin.i18n.desc_create_document, key: 'documents_create_document', value: true },
-        { type: 'checkbox', title: plugin.i18n.rename_document, description: plugin.i18n.desc_rename_document, key: 'documents_rename_document', value: true },
-        { type: 'checkbox', title: plugin.i18n.rename_document_by_id, description: plugin.i18n.desc_rename_document_by_id, key: 'documents_rename_document_by_id', value: true },
-        { type: 'checkbox', title: plugin.i18n.remove_document, description: plugin.i18n.desc_remove_document, key: 'documents_remove_document', value: false },
-        { type: 'checkbox', title: plugin.i18n.remove_document_by_id, description: plugin.i18n.desc_remove_document_by_id, key: 'documents_remove_document_by_id', value: false },
-        { type: 'checkbox', title: plugin.i18n.move_documents, description: plugin.i18n.desc_move_documents, key: 'documents_move_documents', value: true },
-        { type: 'checkbox', title: plugin.i18n.move_documents_by_id, description: plugin.i18n.desc_move_documents_by_id, key: 'documents_move_documents_by_id', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_document_path, description: plugin.i18n.desc_get_document_path, key: 'documents_get_document_path', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_hpath_by_path, description: plugin.i18n.desc_get_hpath_by_path, key: 'documents_get_hpath_by_path', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_hpath_by_id, description: plugin.i18n.desc_get_hpath_by_id, key: 'documents_get_hpath_by_id', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_ids_by_hpath, description: plugin.i18n.desc_get_ids_by_hpath, key: 'documents_get_ids_by_hpath', value: true },
-        ];
-    }
-
-    // Blocks: 13 tools - use i18n
-    let blocksItems: ISettingItem[] = [
-        { type: 'checkbox', title: 'insert_block', description: 'Insert a new block at specified position', key: 'blocks_insert_block', value: true },
-        { type: 'checkbox', title: 'prepend_block', description: 'Insert a block at the beginning of parent', key: 'blocks_prepend_block', value: true },
-        { type: 'checkbox', title: 'append_block', description: 'Insert a block at the end of parent', key: 'blocks_append_block', value: true },
-        { type: 'checkbox', title: 'update_block', description: 'Update block content', key: 'blocks_update_block', value: true },
-        { type: 'checkbox', title: 'delete_block', description: 'Delete a block', key: 'blocks_delete_block', value: false },
-        { type: 'checkbox', title: 'move_block', description: 'Move a block to new position', key: 'blocks_move_block', value: true },
-        { type: 'checkbox', title: 'fold_block', description: 'Fold a block (collapse children)', key: 'blocks_fold_block', value: true },
-        { type: 'checkbox', title: 'unfold_block', description: 'Unfold a block (expand children)', key: 'blocks_unfold_block', value: true },
-        { type: 'checkbox', title: 'get_block_kramdown', description: 'Get block content in kramdown format', key: 'blocks_get_block_kramdown', value: true },
-        { type: 'checkbox', title: 'get_child_blocks', description: 'Get all child blocks of a parent', key: 'blocks_get_child_blocks', value: true },
-        { type: 'checkbox', title: 'transfer_block_ref', description: 'Transfer block references', key: 'blocks_transfer_block_ref', value: true },
-        { type: 'checkbox', title: 'set_block_attrs', description: 'Set block attributes', key: 'blocks_set_block_attrs', value: true },
-        { type: 'checkbox', title: 'get_block_attrs', description: 'Get block attributes', key: 'blocks_get_block_attrs', value: true },
-    ];
-    $: if (plugin?.i18n) {
-        blocksItems = [
-        { type: 'checkbox', title: plugin.i18n.insert_block, description: plugin.i18n.desc_insert_block, key: 'blocks_insert_block', value: true },
-        { type: 'checkbox', title: plugin.i18n.prepend_block, description: plugin.i18n.desc_prepend_block, key: 'blocks_prepend_block', value: true },
-        { type: 'checkbox', title: plugin.i18n.append_block, description: plugin.i18n.desc_append_block, key: 'blocks_append_block', value: true },
-        { type: 'checkbox', title: plugin.i18n.update_block, description: plugin.i18n.desc_update_block, key: 'blocks_update_block', value: true },
-        { type: 'checkbox', title: plugin.i18n.delete_block, description: plugin.i18n.desc_delete_block, key: 'blocks_delete_block', value: false },
-        { type: 'checkbox', title: plugin.i18n.move_block, description: plugin.i18n.desc_move_block, key: 'blocks_move_block', value: true },
-        { type: 'checkbox', title: plugin.i18n.fold_block, description: plugin.i18n.desc_fold_block, key: 'blocks_fold_block', value: true },
-        { type: 'checkbox', title: plugin.i18n.unfold_block, description: plugin.i18n.desc_unfold_block, key: 'blocks_unfold_block', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_block_kramdown, description: plugin.i18n.desc_get_block_kramdown, key: 'blocks_get_block_kramdown', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_child_blocks, description: plugin.i18n.desc_get_child_blocks, key: 'blocks_get_child_blocks', value: true },
-        { type: 'checkbox', title: plugin.i18n.transfer_block_ref, description: plugin.i18n.desc_transfer_block_ref, key: 'blocks_transfer_block_ref', value: true },
-        { type: 'checkbox', title: plugin.i18n.set_block_attrs, description: plugin.i18n.desc_set_block_attrs, key: 'blocks_set_block_attrs', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_block_attrs, description: plugin.i18n.desc_get_block_attrs, key: 'blocks_get_block_attrs', value: true },
-        ];
-    }
-
-    // Files: 9 tools - use i18n
-    let filesItems: ISettingItem[] = [
-        { type: 'checkbox', title: 'upload_asset', description: 'Upload file to assets directory', key: 'files_upload_asset', value: true },
-        { type: 'checkbox', title: 'render_template', description: 'Render a template with document context', key: 'files_render_template', value: true },
-        { type: 'checkbox', title: 'render_sprig', description: 'Render a Sprig template', key: 'files_render_sprig', value: true },
-        { type: 'checkbox', title: 'export_md_content', description: 'Export document as Markdown', key: 'files_export_md_content', value: true },
-        { type: 'checkbox', title: 'export_resources', description: 'Export resources as ZIP', key: 'files_export_resources', value: true },
-        { type: 'checkbox', title: 'push_msg', description: 'Push a notification message', key: 'files_push_msg', value: true },
-        { type: 'checkbox', title: 'push_err_msg', description: 'Push an error message', key: 'files_push_err_msg', value: true },
-        { type: 'checkbox', title: 'get_version', description: 'Get SiYuan version', key: 'files_get_version', value: true },
-        { type: 'checkbox', title: 'get_current_time', description: 'Get current system time', key: 'files_get_current_time', value: true },
-    ];
-    $: if (plugin?.i18n) {
-        filesItems = [
-        { type: 'checkbox', title: plugin.i18n.upload_asset, description: plugin.i18n.desc_upload_asset, key: 'files_upload_asset', value: true },
-        { type: 'checkbox', title: plugin.i18n.render_template, description: plugin.i18n.desc_render_template, key: 'files_render_template', value: true },
-        { type: 'checkbox', title: plugin.i18n.render_sprig, description: plugin.i18n.desc_render_sprig, key: 'files_render_sprig', value: true },
-        { type: 'checkbox', title: plugin.i18n.export_md_content, description: plugin.i18n.desc_export_md_content, key: 'files_export_md_content', value: true },
-        { type: 'checkbox', title: plugin.i18n.export_resources, description: plugin.i18n.desc_export_resources, key: 'files_export_resources', value: true },
-        { type: 'checkbox', title: plugin.i18n.push_msg, description: plugin.i18n.desc_push_msg, key: 'files_push_msg', value: true },
-        { type: 'checkbox', title: plugin.i18n.push_err_msg, description: plugin.i18n.desc_push_err_msg, key: 'files_push_err_msg', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_version, description: plugin.i18n.desc_get_version, key: 'files_get_version', value: true },
-        { type: 'checkbox', title: plugin.i18n.get_current_time, description: plugin.i18n.desc_get_current_time, key: 'files_get_current_time', value: true },
-        ];
-    }
-
-    /********** Events **********/
     interface ChangeEvent {
-        group: string;
         key: string;
         value: any;
     }
 
     const onChanged = async (event: CustomEvent<ChangeEvent>) => {
-        const { group, key, value } = event.detail;
+        const { key, value } = event.detail;
 
-        // Update config
-        const displayKey = toolKeyMap[key];
-        if (displayKey) {
-            config[displayKey] = value;
-            if (plugin) {
-                await plugin.saveData('mcpToolsConfig', config);
-            }
+        if (key.startsWith("perm__") && key !== "perm__hint") {
+            const notebookId = key.slice("perm__".length);
+            permissions = { ...permissions, [notebookId]: value as NotebookPermission };
+            permItems = buildPermItems();
+            await persistPermissions();
+            return;
+        }
+
+        if (key.endsWith("__enabled")) {
+            const category = key.replace("__enabled", "") as ToolCategory;
+            setCategoryEnabled(category, Boolean(value));
+            await persistConfig();
+            return;
+        }
+
+        const [category, , action] = key.split("__");
+        if (category && action) {
+            setActionEnabled(category as ToolCategory, action, Boolean(value));
+            await persistConfig();
         }
     };
 
     export async function saveSettings() {
-        if (plugin) {
-            await plugin.saveData('mcpToolsConfig', config);
-        }
-        showMessage(plugin?.i18n?.mcpConfigSaved || '✅ MCP Tools configuration saved');
+        await persistConfig();
+        showMessage(plugin?.i18n?.mcpConfigSaved || "✅ MCP Tools configuration saved");
     }
 
     export async function resetDefaults() {
-        config = { ...defaultConfig };
-        updateCheckboxValues();
-        if (plugin) {
-            await plugin.saveData('mcpToolsConfig', config);
-        }
-        showMessage(plugin?.i18n?.mcpConfigReset || '🔄 MCP Tools configuration reset to defaults');
+        config = normalizeToolConfig(buildDefaultToolConfig());
+        await persistConfig();
+        showMessage(plugin?.i18n?.mcpConfigReset || "🔄 MCP Tools configuration reset to defaults");
     }
 </script>
 
@@ -289,34 +306,11 @@
         {/each}
     </ul>
     <div class="config__tab-wrap">
-        <SettingPanel
-            group={groups[0]}
-            settingItems={notebooksItems}
-            display={focusGroup === groups[0]}
-            on:changed={onChanged}
-        >
-        </SettingPanel>
-        <SettingPanel
-            group={groups[1]}
-            settingItems={documentsItems}
-            display={focusGroup === groups[1]}
-            on:changed={onChanged}
-        >
-        </SettingPanel>
-        <SettingPanel
-            group={groups[2]}
-            settingItems={blocksItems}
-            display={focusGroup === groups[2]}
-            on:changed={onChanged}
-        >
-        </SettingPanel>
-        <SettingPanel
-            group={groups[3]}
-            settingItems={filesItems}
-            display={focusGroup === groups[3]}
-            on:changed={onChanged}
-        >
-        </SettingPanel>
+        <SettingPanel group={groups[0]} settingItems={notebookItems} display={focusGroup === groups[0]} on:changed={onChanged} />
+        <SettingPanel group={groups[1]} settingItems={documentItems} display={focusGroup === groups[1]} on:changed={onChanged} />
+        <SettingPanel group={groups[2]} settingItems={blockItems} display={focusGroup === groups[2]} on:changed={onChanged} />
+        <SettingPanel group={groups[3]} settingItems={fileItems} display={focusGroup === groups[3]} on:changed={onChanged} />
+        <SettingPanel group={permGroupLabel} settingItems={permItems} display={focusGroup === permGroupLabel} on:changed={onChanged} />
     </div>
 </div>
 
@@ -324,9 +318,11 @@
     .config__panel {
         height: 100%;
     }
+
     .config__panel > ul > li {
         padding-left: 1rem;
     }
+
     .config__tab-wrap {
         max-height: calc(100vh - 250px);
         overflow-y: auto;
