@@ -8,14 +8,18 @@ import type { PermissionManager } from '../permissions';
 import {
     DocumentActionSchema,
     DocumentCreateSchema,
+    DocumentCreateDailyNoteSchema,
     DocumentGetChildBlocksSchema,
     DocumentGetChildDocsSchema,
+    DocumentGetDocSchema,
     DocumentGetHPathSchema,
     DocumentGetIdsSchema,
+    DocumentListTreeSchema,
     DocumentGetPathSchema,
     DocumentMoveSchema,
     DocumentRemoveSchema,
     DocumentRenameSchema,
+    DocumentSearchDocsSchema,
     DocumentSetIconSchema,
 } from '../types';
 import {
@@ -126,6 +130,36 @@ export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
             id: { type: 'string', description: 'Document ID' },
             icon: { type: 'string', description: 'Icon value, e.g., "1f4d4" for 📔 or custom icon path' },
         }, ['id', 'icon'], 'Set the icon for a document or folder.'),
+    },
+    {
+        action: 'list_tree',
+        schema: createActionSchema('list_tree', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+            path: { type: 'string', description: 'Storage path or / for the notebook root' },
+        }, ['notebook', 'path'], 'List the document tree under a notebook path.'),
+    },
+    {
+        action: 'search_docs',
+        schema: createActionSchema('search_docs', {
+            notebook: { type: 'string', description: 'Notebook ID used for permission scoping' },
+            query: { type: 'string', description: 'Keyword to search in document titles' },
+            path: { type: 'string', description: 'Optional storage path to narrow the search scope' },
+        }, ['notebook', 'query'], 'Search documents by title keyword.'),
+    },
+    {
+        action: 'get_doc',
+        schema: createActionSchema('get_doc', {
+            id: { type: 'string', description: 'Document ID' },
+            mode: { type: 'string', enum: ['markdown', 'html'], description: 'Return mode: markdown (default) or html' },
+            size: { type: 'number', description: 'Optional maximum content size hint' },
+        }, ['id'], 'Get document content and metadata.'),
+    },
+    {
+        action: 'create_daily_note',
+        schema: createActionSchema('create_daily_note', {
+            notebook: { type: 'string', description: 'Notebook ID' },
+            app: { type: 'string', description: 'Optional app identifier passed through to SiYuan' },
+        }, ['notebook'], 'Create or return today’s daily note.'),
     },
 ];
 
@@ -314,6 +348,43 @@ export async function callDocumentTool(
                 }
                 await attributeApi.setBlockAttrs(client, parsed.id, { icon: parsed.icon });
                 return createJsonResult({ success: true, id: parsed.id, icon: parsed.icon });
+            }
+            case 'list_tree': {
+                const parsed = DocumentListTreeSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const result = await documentApi.listDocTree(client, parsed.notebook, parsed.path);
+                return createJsonResult(result);
+            }
+            case 'search_docs': {
+                const parsed = DocumentSearchDocsSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const result = await documentApi.searchDocs(client, parsed.query);
+                return createJsonResult(result);
+            }
+            case 'get_doc': {
+                const parsed = DocumentGetDocSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const mode = parsed.mode === 'html' ? 0 : 3;
+                const result = await documentApi.getDoc(client, parsed.id, mode, parsed.size);
+                return createJsonResult(result);
+            }
+            case 'create_daily_note': {
+                const parsed = DocumentCreateDailyNoteSchema.parse(rawArgs);
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
+                if (denied) {
+                    return denied;
+                }
+                const result = await documentApi.createDailyNote(client, parsed.notebook, parsed.app);
+                return createJsonResult({ success: true, notebook: parsed.notebook, ...result });
             }
             default: {
                 const _exhaustive: never = parsedAction;

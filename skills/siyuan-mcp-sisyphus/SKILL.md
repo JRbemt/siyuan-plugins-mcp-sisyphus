@@ -1,15 +1,15 @@
 ---
 name: siyuan-mcp-sisyphus
-description: Operate SiYuan notes via 4 aggregated MCP tools (notebook/document/block/file). Covers path semantics, permissions, block editing, and export.
+description: Operate SiYuan notes via 7 aggregated MCP tools (notebook/document/block/file/search/tag/system). Covers path semantics, permissions, block editing, search, tags, and export.
 ---
 
 # SiYuan MCP Sisyphus
 
-4 aggregated MCP tools for SiYuan note operations. Each tool takes an `action` parameter. Full parameter schemas are in the tool descriptions — this skill covers pitfalls and non-obvious behavior.
+7 aggregated MCP tools for SiYuan note operations. Each tool takes an `action` parameter. Full parameter schemas are in the tool descriptions — this skill covers pitfalls and non-obvious behavior.
 
 ## Recommended Workflow
 
-1. **Explore**: `notebook(action="list")`, `file(action="get_version")`
+1. **Explore**: `notebook(action="list")`, `system(action="get_version")`
 2. **Locate**: `document(action="get_path" | "get_hpath" | "get_ids")`
 3. **Write**: `document(action="create" | "rename" | "move")`, `block(action="append" | "update" | ...)`
 4. **Verify**: `document(action="get_child_blocks")` or `block(action="get_children")`
@@ -115,15 +115,24 @@ Before calling any of these, describe the action and wait for explicit user agre
 
 | Action | Type | Notes |
 |--------|------|-------|
-| `get_version` | read | Returns `{version: "3.x.x"}` |
-| `get_current_time` | read | Returns `{currentTime: <epoch_ms>}` (milliseconds since epoch, not formatted) |
 | `render_sprig` | read | Sprig/Go template rendering. Example: `{{now \| date "2006-01-02"}}` |
 | `render_template` | read | Render a template file with document context. Requires `id` + `path` (absolute file path) |
 | `export_md` | read | Returns `{content: "---\ntitle: ...\n---\n...", hPath: "/..."}` — full markdown with frontmatter |
 | `upload_asset` | write | `assetsDirPath` + `file` (base64) + `fileName` |
 | `export_resources` | read | Exports paths as ZIP. Optional `name` for the archive |
+
+### `system`
+
+| Action | Type | Notes |
+|--------|------|-------|
+| `get_version` | read | Returns `{version: "3.x.x"}` |
+| `get_current_time` | read | Returns `{currentTime: <epoch_ms>}` (milliseconds since epoch, not formatted) |
 | `push_msg` | — | Show notification in SiYuan UI. Optional `timeout` in ms |
 | `push_err_msg` | — | Show error notification. Optional `timeout` in ms |
+
+### Tag creation
+
+There is no direct `tag.create` action. To create a real SiYuan tag, write it into block markdown as `#标签#` with both leading and trailing `#`.
 
 ## MCP Help Resources
 

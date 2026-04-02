@@ -1,7 +1,7 @@
 # SiYuan MCP 接口 AI 测试手册
 
 这是一份**给 AI 执行**的接口测试手册。  
-目标是让 AI 在尽量少猜测的前提下，对当前 MCP 暴露的 `notebook` / `document` / `block` / `file` / `search` 五类工具进行**系统化回归测试**，重点覆盖：
+目标是让 AI 在尽量少猜测的前提下，对当前 MCP 暴露的 `notebook` / `document` / `block` / `file` / `search` / `tag` / `system` 七类工具进行**系统化回归测试**，重点覆盖：
 
 - 聚合工具是否正确暴露
 - 文档路径语义是否正确
@@ -9,6 +9,8 @@
 - 权限拦截是否有效
 - 常见读写操作是否正常
 - 搜索与查询功能是否正常
+- 标签工具是否正常
+- 系统工具是否正常
 
 ---
 
@@ -76,13 +78,19 @@ AI 先执行以下检查：
 
 ### 4.1 工具可见性检查
 
-确认存在以下 5 个聚合工具：
+确认存在以下 7 个聚合工具：
 
 - `notebook`
 - `document`
 - `block`
 - `file`
 - `search`
+- `tag`
+- `system`
+
+说明：
+
+- `system(action="workspace_info")` 默认应为关闭状态，且需要在测试报告中标记为高风险 action。
 
 ### 4.2 关键 action 检查
 
@@ -94,9 +102,11 @@ AI 先执行以下检查：
 - `create`
 - `open`
 - `close`
+- `remove`
 - `rename`
 - `get_conf`
 - `set_conf`
+- `set_icon`
 - `get_permissions`
 - `set_permission`
 - `get_child_docs`
@@ -112,6 +122,11 @@ AI 先执行以下检查：
 - `get_ids`
 - `get_child_blocks`
 - `get_child_docs`
+- `set_icon`
+- `list_tree`
+- `search_docs`
+- `get_doc`
+- `create_daily_note`
 
 #### block
 
@@ -125,15 +140,42 @@ AI 先执行以下检查：
 - `unfold`
 - `get_kramdown`
 - `get_children`
+- `transfer_ref`
 - `set_attrs`
 - `get_attrs`
+- `exists`
+- `info`
+- `breadcrumb`
+- `dom`
+- `recent_updated`
+- `word_count`
 
 #### file
 
-- `get_version`
-- `get_current_time`
+- `upload_asset`
+- `render_template`
 - `render_sprig`
 - `export_md`
+- `export_resources`
+
+#### tag
+
+- `list`
+- `rename`
+- `remove`
+
+#### system
+
+- `workspace_info`
+- `network`
+- `changelog`
+- `conf`
+- `sys_fonts`
+- `boot_progress`
+- `push_msg`
+- `push_err_msg`
+- `get_version`
+- `get_current_time`
 
 #### search
 
@@ -144,18 +186,20 @@ AI 先执行以下检查：
 - `get_backmentions`
 
 如果缺少任一关键 action，记录 `BLOCKED` 并在最终报告里指出。
+对于 `workspace_info`，若默认配置中不可见但手动启用后可用，记为符合预期。
 
-### 4.3 五类 tool 权限预热
+### 4.3 七类 tool 权限预热
 
-为了避免 AI 在测试进行到一半时，首次调用某个 tool 才弹出权限确认而卡住，需要在**测试刚开始阶段**主动把 5 个聚合 tool 都至少调用一次。
+为了避免 AI 在测试进行到一半时，首次调用某个 tool 才弹出权限确认而卡住，需要在**测试刚开始阶段**主动把 7 个聚合 tool 都至少调用一次。
 
 这一步按两阶段执行，避免使用“任意现有对象”造成歧义：
 
 #### 阶段 A：创建测试对象前先预热能直接调用的 tool
 
 1. `notebook(action="list")`
-2. `file(action="get_version")`
+2. `system(action="get_version")`
 3. `search(action="search_tag", k="test")`
+4. `tag(action="list")`
 
 #### 阶段 B：创建最小测试对象后再预热依赖对象 ID 的 tool
 
@@ -168,13 +212,14 @@ AI 先执行以下检查：
 
 3. `document(action="get_path", id=sourceDocId)`
 4. `block(action="get_children", id=sourceDocId)`
+5. `file(action="render_sprig", template="warmup")`
 
 #### 说明
 
-- 这一步的目标是**提前触发 5 个 tool 的权限请求**，不是验证业务功能。
+- 这一步的目标是**提前触发 7 个 tool 的权限请求**，不是验证业务功能。
 - `document` 与 `block` 的预热**不要**依赖用户已有对象，统一使用测试过程中刚创建的 `sourceDocId`。
-- 这 5 次调用本身也要记录进测试日志，但不单独计入 T01–T27 的结果。
-- 只有在五个 tool 都至少被调用过一次之后，才进入正式测试步骤。
+- 这些预热调用本身也要记录进测试日志，但不单独计入正式用例结果。
+- 只有在七个 tool 都至少被调用过一次之后，才进入正式测试步骤。
 
 ---
 
@@ -207,6 +252,7 @@ AI 需要创建一套固定结构的数据，后续所有测试尽量复用。
 - `/TargetDoc`
 - `/PathMoveDoc`
 - `/DeleteDoc`
+- `/RenderDoc`
 
 #### 子文档
 
@@ -218,7 +264,23 @@ AI 需要创建一套固定结构的数据，后续所有测试尽量复用。
 - `targetDocId`
 - `pathMoveDocId`
 - `deleteDocId`
+- `renderDocId`
 - `childDocId`
+
+### 5.3 测试块与标签数据
+
+AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
+
+- 一个标题块：`# Source`
+- 一个普通段落：`seed`
+- 一个唯一标签：`#ai-interface-test-<timestamp>#`
+- 一个引用源块与一个引用目标块（供 `transfer_ref` / backlink 测试）
+
+保存返回的：
+
+- `tagLabel`
+- `refSourceBlockId`
+- `refTargetBlockId`
 
 ---
 
@@ -757,8 +819,8 @@ AI 需要创建一套固定结构的数据，后续所有测试尽量复用。
 
 #### 步骤
 
-1. `file(action="get_version")`
-2. `file(action="get_current_time")`
+1. `system(action="get_version")`
+2. `system(action="get_current_time")`
 3. `file(action="render_sprig", template="codex-{{ now | date \"2006\" }}")`
 4. `file(action="export_md", id=sourceDocId)`
 
@@ -1169,7 +1231,233 @@ AI 需要创建一套固定结构的数据，后续所有测试尽量复用。
 
 ---
 
-## 9. 清理步骤
+## 9. 全量覆盖补充测试
+
+以下用例用于补齐当前手册中尚未覆盖的 tool / action。  
+如果前面某一步已经自然覆盖了某个 action，仍需在此处明确记录“已覆盖”并给出引用步骤号。
+
+### T28 - notebook 补充动作
+
+#### 目标
+
+覆盖 `set_conf` / `set_icon` / `rename` / `remove` 的完整链路。
+
+#### 步骤
+
+1. `notebook(action="set_icon", notebook=testNotebookId, icon="1f4d4")`
+2. 读取 `get_permissions` 或 `list`，确认笔记本仍可见
+3. `notebook(action="set_conf", notebook=testNotebookId, conf={ "name": "AI MCP Interface Test <timestamp> Updated" })`
+4. `notebook(action="rename", notebook=testNotebookId, name="AI MCP Interface Test <timestamp> Final")`
+5. 记录最终名称，供清理阶段删除
+
+#### 预期
+
+- `set_icon` / `set_conf` / `rename` 均成功
+- 笔记本始终可正常读取
+- `remove` 已在清理阶段覆盖，最终报告中需明确写明清理是否成功
+
+### T29 - document 补充动作
+
+#### 目标
+
+覆盖 `set_icon` / `list_tree` / `search_docs` / `get_doc` / `create_daily_note`。
+
+#### 步骤
+
+1. `document(action="set_icon", id=targetDocId, icon="1f4c4")`
+2. `document(action="list_tree", notebook=testNotebookId, path="/")`
+3. `document(action="search_docs", notebook=testNotebookId, query="TargetDoc")`
+4. `document(action="get_doc", id=sourceDocId)`
+5. `document(action="create_daily_note", notebook=testNotebookId)`
+
+#### 预期
+
+- `set_icon` 成功
+- `list_tree` 返回树中包含 `TargetDoc` 与 `ChildDoc`
+- `search_docs` 返回结果中包含 `TargetDoc`
+- `get_doc` 返回文档内容与元数据
+- `create_daily_note` 返回日记文档；若当天已存在则返回已有文档
+
+### T30 - block 补充读接口
+
+#### 目标
+
+覆盖 `exists` / `info` / `breadcrumb` / `dom` / `recent_updated` / `word_count`。
+
+#### 步骤
+
+1. `block(action="exists", id=appendBlockId)`
+2. `block(action="info", id=appendBlockId)`
+3. `block(action="breadcrumb", id=appendBlockId)`
+4. `block(action="dom", id=appendBlockId)`
+5. `block(action="recent_updated")`
+6. `block(action="word_count", ids=[sourceDocId, appendBlockId])`
+
+#### 预期
+
+- `exists` 返回 `true`
+- `info` 返回块所属根文档信息
+- `breadcrumb` 返回非空路径
+- `dom` 返回渲染后的 HTML / DOM 文本
+- `recent_updated` 返回最近更新块列表，且应能看到测试块或测试文档相关块
+- `word_count` 返回统计结果，且总数大于 `0`
+
+### T31 - block 引用转移
+
+#### 目标
+
+覆盖 `transfer_ref`。
+
+#### 步骤
+
+1. 在 `SourceDoc` 中创建两个块：
+   - `refTargetBlockId`：被引用块
+   - `refSourceBlockId`：包含对 `refTargetBlockId` 的块引用
+2. 再创建另一个块 `refTargetBlockId2`
+3. 调用：
+
+```json
+{
+  "action": "transfer_ref",
+  "fromID": "<refTargetBlockId>",
+  "toID": "<refTargetBlockId2>"
+}
+```
+
+#### 预期
+
+- 调用成功
+- 原先引用 `refTargetBlockId` 的位置被转移到 `refTargetBlockId2`
+- 若工具返回受影响块列表，应记录下来
+
+### T32 - file 全量覆盖
+
+#### 目标
+
+覆盖 `upload_asset` / `render_template` / `render_sprig` / `export_md` / `export_resources`。
+
+#### 步骤
+
+1. 准备一个极小文本文件，例如内容为 `ai-interface-test`
+2. Base64 编码后调用：
+
+```json
+{
+  "action": "upload_asset",
+  "assetsDirPath": "/assets/",
+  "fileName": "ai-interface-test.txt",
+  "file": "<base64>"
+}
+```
+
+3. `file(action="render_template", id=sourceDocId, path="<workspace-template-path>")`
+   - 若当前环境没有可安全使用的模板文件，记录 `BLOCKED`
+4. `file(action="render_sprig", template="hello-{{ `codex` | upper }}")`
+5. `file(action="export_md", id=sourceDocId)`
+6. `file(action="export_resources", paths=["<uploadedAssetPath>"])`
+
+#### 预期
+
+- `upload_asset` 成功并返回资源路径
+- `render_template` 成功返回渲染内容，或在模板文件不存在时记录 `BLOCKED`
+- `render_sprig` 成功返回 `hello-CODEX`
+- `export_md` 成功返回 Markdown
+- `export_resources` 成功返回 ZIP 导出结果
+
+### T33 - search 全量覆盖补强
+
+#### 目标
+
+让 `fulltext` / `query_sql` / `search_tag` / `get_backlinks` / `get_backmentions` 都基于测试数据有明确命中。
+
+#### 步骤
+
+1. 确保 `SourceDoc` 中包含唯一词：`ai-interface-needle-<timestamp>`
+2. `search(action="fulltext", query="ai-interface-needle-<timestamp>")`
+3. `search(action="query_sql", stmt="SELECT id, content FROM blocks WHERE content LIKE '%ai-interface-needle-%' LIMIT 10")`
+4. `search(action="search_tag", k="ai-interface-test")`
+5. `search(action="get_backlinks", id=refTargetBlockId2)`
+6. `search(action="get_backmentions", id=sourceDocId)`
+
+#### 预期
+
+- 全文搜索与 SQL 查询都能命中测试数据
+- 标签搜索能返回测试标签
+- `get_backlinks` 能返回转移后的引用结果
+- `get_backmentions` 成功返回，即使为空数组也算通过
+
+### T34 - tag 全量覆盖
+
+#### 目标
+
+覆盖 `list` / `rename` / `remove`。
+
+#### 步骤
+
+1. 先用 `tag(action="list")` 确认存在 `tagLabel`
+2. `tag(action="rename", oldLabel=tagLabel, newLabel="ai-interface-test-renamed-<timestamp>")`
+3. 再次 `tag(action="list")` 验证新标签存在
+4. `tag(action="remove", label="ai-interface-test-renamed-<timestamp>")`
+5. 再次 `tag(action="list")` 验证该标签已删除
+
+#### 预期
+
+- `list` 可正常返回标签
+- `rename` 成功，原标签被替换
+- `remove` 成功，标签不再出现
+
+### T35 - system 全量覆盖
+
+#### 目标
+
+覆盖 `workspace_info` / `network` / `changelog` / `conf` / `sys_fonts` / `boot_progress` / `push_msg` / `push_err_msg` / `get_version` / `get_current_time`。
+
+#### 步骤
+
+依次执行：
+
+1. `system(action="workspace_info")`
+2. `system(action="network")`
+3. `system(action="changelog")`
+4. `system(action="conf")`
+5. `system(action="sys_fonts")`
+6. `system(action="boot_progress")`
+7. `system(action="push_msg", msg="AI interface test message")`
+8. `system(action="push_err_msg", msg="AI interface test error")`
+9. `system(action="get_version")`
+10. `system(action="get_current_time")`
+
+#### 预期
+
+- 每个调用都成功
+- `workspace_info` 返回工作区元数据
+- `network` / `conf` 返回已脱敏信息
+- `sys_fonts` 返回字体列表
+- `push_msg` / `push_err_msg` 返回成功，且不会中断后续测试
+
+### T36 - 权限覆盖矩阵复核
+
+#### 目标
+
+确认所有带权限约束的 action 至少被测到一次。
+
+#### 检查要求
+
+最终报告必须额外给出一张覆盖矩阵，逐项标记下列 action 是否已被验证：
+
+- `notebook`: `open` `close` `get_conf` `set_conf` `set_icon` `get_child_docs` `get_permissions` `set_permission` `rename` `remove`
+- `document`: `create` `rename` `remove` `move` `get_path` `get_hpath` `get_ids` `get_child_blocks` `get_child_docs` `set_icon` `list_tree` `search_docs` `get_doc` `create_daily_note`
+- `block`: `insert` `prepend` `append` `update` `delete` `move` `fold` `unfold` `get_kramdown` `get_children` `transfer_ref` `set_attrs` `get_attrs` `exists` `info` `breadcrumb` `dom` `recent_updated` `word_count`
+- `file`: `upload_asset` `render_template` `render_sprig` `export_md` `export_resources`
+- `search`: `fulltext` `query_sql` `search_tag` `get_backlinks` `get_backmentions`
+- `tag`: `list` `rename` `remove`
+- `system`: `workspace_info` `network` `changelog` `conf` `sys_fonts` `boot_progress` `push_msg` `push_err_msg` `get_version` `get_current_time`
+
+如果某项未覆盖，必须明确标记为 `MISS`，不能默认算通过。
+
+---
+
+## 10. 清理步骤
 
 AI 必须清理自己创建的数据。
 
@@ -1189,17 +1477,17 @@ AI 必须清理自己创建的数据。
 
 ---
 
-## 10. 最终报告模板
+## 11. 最终报告模板
 
 AI 完成测试后，必须输出如下结构的报告。
 
-### 9.1 总结
+### 11.1 总结
 
 - 测试时间
 - 测试目标
 - 总体结果：`PASS` / `FAIL` / `PARTIAL`
 
-### 9.2 环境信息
+### 11.2 环境信息
 
 - SiYuan 版本
 - 可见工具列表
@@ -1209,8 +1497,10 @@ AI 完成测试后，必须输出如下结构的报告。
   - `document.get_child_docs`
   - `search.fulltext`
   - `search.query_sql`
+  - `tag.list`
+  - `system.workspace_info`
 
-### 9.3 用例结果
+### 11.3 用例结果
 
 按如下格式逐条列出：
 
@@ -1218,7 +1508,7 @@ AI 完成测试后，必须输出如下结构的报告。
 - `T02 PASS` - 原因
 - `T03 FAIL` - 实际返回 xxx，预期 yyy
 
-### 9.4 关键结论
+### 11.4 关键结论
 
 必须明确回答以下问题：
 
@@ -1235,8 +1525,21 @@ AI 完成测试后，必须输出如下结构的报告。
 11. `search.fulltext` 是否能正常搜索内容？
 12. `search.query_sql` 是否拒绝非 SELECT 语句？
 13. `search.get_backlinks` / `search.get_backmentions` 是否正常返回？
+14. `tag.list` / `tag.rename` / `tag.remove` 是否正常？
+15. `system` 工具全部 action 是否可正常返回？
+16. `file.upload_asset` / `file.render_template` / `file.export_resources` 是否正常？
+17. 是否所有已暴露 action 都至少测试到一次？
 
-### 9.5 遗留问题
+### 11.5 覆盖矩阵
+
+必须输出按 tool 分组的 action 覆盖矩阵：
+
+- `PASS`：已执行且结果符合预期
+- `FAIL`：已执行但结果不符合预期
+- `BLOCKED`：环境限制导致无法执行
+- `MISS`：本轮未覆盖到
+
+### 11.6 遗留问题
 
 如果有异常，必须列出：
 
@@ -1247,7 +1550,7 @@ AI 完成测试后，必须输出如下结构的报告。
 
 ---
 
-## 11. 建议给 AI 的执行提示词
+## 12. 建议给 AI 的执行提示词
 
 可以直接把下面这段提示词连同本文件一起交给 AI：
 
@@ -1255,4 +1558,5 @@ AI 完成测试后，必须输出如下结构的报告。
 > 只允许操作你自己创建的测试笔记本和测试文档。  
 > 每一步都要记录调用参数、返回结果、预期结果和 PASS/FAIL。  
 > 如果某一步失败，保留现场并继续执行后续安全步骤。  
-> 测试结束后必须恢复权限并清理测试数据，最后按文档中的“最终报告模板”输出完整报告。
+> 必须覆盖所有已暴露的聚合 tool 和 action；如果某项因环境原因无法执行，标记为 BLOCKED，不允许跳过不记。  
+> 测试结束后必须恢复权限并清理测试数据，最后按文档中的“最终报告模板”输出完整报告和覆盖矩阵。

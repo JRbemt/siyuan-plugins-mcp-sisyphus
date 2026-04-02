@@ -2,13 +2,13 @@
     import { onMount } from "svelte";
     import { showMessage } from "siyuan";
 
-    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type BlockAction, type DocumentAction, type FileAction, type NotebookAction, type ToolCategory, type ToolConfig } from "./tool-config";
+    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type BlockAction, type DocumentAction, type FileAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
     import { loadPersistedToolConfig, savePersistedToolConfig } from "./tool-config-storage";
     import SettingPanel from "../libs/components/setting-panel.svelte";
 
     export let plugin: any;
 
-    type GroupAction = NotebookAction | DocumentAction | BlockAction | FileAction;
+    type GroupAction = NotebookAction | DocumentAction | BlockAction | FileAction | SearchAction | TagAction | SystemAction;
     type NotebookPermission = 'none' | 'readonly' | 'write';
 
     interface GroupDefinition {
@@ -39,6 +39,7 @@
                 { key: "get_permissions", title: "Get Notebook Permissions", description: "Get MCP access permissions for all notebooks." },
                 { key: "set_permission", title: "Set Notebook Permission", description: "Set MCP access permission for a notebook." },
                 { key: "get_child_docs", title: "Get Child Documents", description: "Get direct child documents at the notebook root." },
+                { key: "set_icon", title: "Set Notebook Icon", description: "Set the icon for a notebook." },
             ],
         },
         {
@@ -55,6 +56,11 @@
                 { key: "get_ids", title: "Get IDs by Hierarchical Path", description: "Get document IDs by hierarchical path." },
                 { key: "get_child_blocks", title: "Get Child Blocks", description: "Get direct child blocks by document ID." },
                 { key: "get_child_docs", title: "Get Child Documents", description: "Get direct child documents by document ID." },
+                { key: "set_icon", title: "Set Document Icon", description: "Set the icon for a document or folder." },
+                { key: "list_tree", title: "List Document Tree", description: "List the nested document tree under a notebook path." },
+                { key: "search_docs", title: "Search Documents", description: "Search documents by title keyword." },
+                { key: "get_doc", title: "Get Document Content", description: "Get document content and metadata by document ID." },
+                { key: "create_daily_note", title: "Create Daily Note", description: "Create or return today's daily note for a notebook." },
             ],
         },
         {
@@ -75,6 +81,12 @@
                 { key: "transfer_ref", title: "Transfer Block Reference", description: "Transfer block references." },
                 { key: "set_attrs", title: "Set Block Attributes", description: "Set block attributes." },
                 { key: "get_attrs", title: "Get Block Attributes", description: "Get block attributes." },
+                { key: "exists", title: "Check Block Existence", description: "Check whether a block exists." },
+                { key: "info", title: "Get Block Info", description: "Get root document metadata for a block." },
+                { key: "breadcrumb", title: "Get Block Breadcrumb", description: "Get the breadcrumb path for a block." },
+                { key: "dom", title: "Get Block DOM", description: "Get rendered DOM for a block." },
+                { key: "recent_updated", title: "Recent Updated Blocks", description: "List recently updated blocks." },
+                { key: "word_count", title: "Block Word Count", description: "Get word-count statistics for blocks." },
             ],
         },
         {
@@ -87,6 +99,41 @@
                 { key: "render_sprig", title: "Render Sprig", description: "Render a Sprig template." },
                 { key: "export_md", title: "Export Markdown Content", description: "Export document content as Markdown." },
                 { key: "export_resources", title: "Export Resources", description: "Export resources as a ZIP archive." },
+            ],
+        },
+        {
+            category: "search",
+            icon: "🔍",
+            groupKey: "Search",
+            actions: [
+                { key: "fulltext", title: "Full-text Search", description: "Search blocks across the workspace." },
+                { key: "query_sql", title: "Query SQL", description: "Run read-only SQL queries against SiYuan data." },
+                { key: "search_tag", title: "Search Tags", description: "Search for matching tags." },
+                { key: "get_backlinks", title: "Get Backlinks", description: "Get backlinks for a block or document." },
+                { key: "get_backmentions", title: "Get Backmentions", description: "Get backmentions for a block or document." },
+            ],
+        },
+        {
+            category: "tag",
+            icon: "🏷️",
+            groupKey: "Tags",
+            actions: [
+                { key: "list", title: "List Tags", description: "List tags in the workspace." },
+                { key: "rename", title: "Rename Tag", description: "Rename a tag label." },
+                { key: "remove", title: "Remove Tag", description: "Remove a tag label." },
+            ],
+        },
+        {
+            category: "system",
+            icon: "🖥️",
+            groupKey: "System",
+            actions: [
+                { key: "workspace_info", title: "Workspace Info", description: "Get SiYuan workspace metadata. High risk: exposes the absolute workspace path." },
+                { key: "network", title: "Network Info", description: "Get masked network proxy information." },
+                { key: "changelog", title: "Changelog", description: "Get the current version changelog when available." },
+                { key: "conf", title: "Masked Config", description: "Get masked system configuration via summary-first progressive reading." },
+                { key: "sys_fonts", title: "System Fonts", description: "List available system fonts via summary-first paginated reading." },
+                { key: "boot_progress", title: "Boot Progress", description: "Get current boot progress details." },
                 { key: "push_msg", title: "Push Message", description: "Push a notification message." },
                 { key: "push_err_msg", title: "Push Error Message", description: "Push an error notification message." },
                 { key: "get_version", title: "Get Version", description: "Get the SiYuan system version." },
@@ -97,7 +144,7 @@
 
     const PERM_GROUP_KEY = "Permissions";
     const PERM_GROUP_LABEL = "🔒 Permissions";
-    const defaultGroups = [...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`), PERM_GROUP_LABEL];
+    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`)];
 
     let config: ToolConfig = buildDefaultToolConfig();
     let groups = defaultGroups;
@@ -107,6 +154,9 @@
     let documentItems: ISettingItem[] = [];
     let blockItems: ISettingItem[] = [];
     let fileItems: ISettingItem[] = [];
+    let searchItems: ISettingItem[] = [];
+    let tagItems: ISettingItem[] = [];
+    let systemItems: ISettingItem[] = [];
 
     // Permissions tab state
     interface NotebookInfo { id: string; name: string; }
@@ -171,11 +221,14 @@
         documentItems = [buildToolToggleItem(GROUP_DEFINITIONS[1]), ...buildActionItems(GROUP_DEFINITIONS[1])];
         blockItems = [buildToolToggleItem(GROUP_DEFINITIONS[2]), ...buildActionItems(GROUP_DEFINITIONS[2])];
         fileItems = [buildToolToggleItem(GROUP_DEFINITIONS[3]), ...buildActionItems(GROUP_DEFINITIONS[3])];
+        searchItems = [buildToolToggleItem(GROUP_DEFINITIONS[4]), ...buildActionItems(GROUP_DEFINITIONS[4])];
+        tagItems = [buildToolToggleItem(GROUP_DEFINITIONS[5]), ...buildActionItems(GROUP_DEFINITIONS[5])];
+        systemItems = [buildToolToggleItem(GROUP_DEFINITIONS[6]), ...buildActionItems(GROUP_DEFINITIONS[6])];
         permItems = buildPermItems();
     }
 
     $: permGroupLabel = `🔒 ${getLabel(PERM_GROUP_KEY, PERM_GROUP_LABEL)}`;
-    $: groups = [...GROUP_DEFINITIONS.map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), permGroupLabel];
+    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`)];
     $: if (!groups.includes(focusGroup)) {
         focusGroup = groups[0];
     }
@@ -306,11 +359,14 @@
         {/each}
     </ul>
     <div class="config__tab-wrap">
-        <SettingPanel group={groups[0]} settingItems={notebookItems} display={focusGroup === groups[0]} on:changed={onChanged} />
-        <SettingPanel group={groups[1]} settingItems={documentItems} display={focusGroup === groups[1]} on:changed={onChanged} />
-        <SettingPanel group={groups[2]} settingItems={blockItems} display={focusGroup === groups[2]} on:changed={onChanged} />
-        <SettingPanel group={groups[3]} settingItems={fileItems} display={focusGroup === groups[3]} on:changed={onChanged} />
         <SettingPanel group={permGroupLabel} settingItems={permItems} display={focusGroup === permGroupLabel} on:changed={onChanged} />
+        <SettingPanel group={groups[1]} settingItems={notebookItems} display={focusGroup === groups[1]} on:changed={onChanged} />
+        <SettingPanel group={groups[2]} settingItems={documentItems} display={focusGroup === groups[2]} on:changed={onChanged} />
+        <SettingPanel group={groups[3]} settingItems={blockItems} display={focusGroup === groups[3]} on:changed={onChanged} />
+        <SettingPanel group={groups[4]} settingItems={fileItems} display={focusGroup === groups[4]} on:changed={onChanged} />
+        <SettingPanel group={groups[5]} settingItems={searchItems} display={focusGroup === groups[5]} on:changed={onChanged} />
+        <SettingPanel group={groups[6]} settingItems={tagItems} display={focusGroup === groups[6]} on:changed={onChanged} />
+        <SettingPanel group={groups[7]} settingItems={systemItems} display={focusGroup === groups[7]} on:changed={onChanged} />
     </div>
 </div>
 

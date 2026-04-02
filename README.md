@@ -2,20 +2,22 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-A SiYuan Note MCP server plugin built around progressive disclosure — collapsing 41 scattered API endpoints into five aggregated tools: `notebook`, `document`, `block`, `file`, and `search`. Paired with a three-tier permission model (none / readonly / write) and mandatory confirmation gates on high-risk actions, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
+A SiYuan Note MCP server plugin built around progressive disclosure — exposing seven aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`. Paired with a three-tier permission model (none / readonly / write) and mandatory confirmation gates on high-risk actions, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
 
 - `notebook`
 - `document`
 - `block`
 - `file`
 - `search`
+- `tag`
+- `system`
 
 Each tool uses a required `action` field instead of exposing dozens of endpoint-shaped tool names.
 
 ## Features
 
 - Full SiYuan API coverage for notebooks, documents, blocks, assets, export, and notifications
-- A smaller MCP surface: 5 tools instead of 41 endpoint-level tools
+- A smaller MCP surface: 7 grouped tools instead of dozens of endpoint-level tools
 - Action-level toggles in the plugin settings. In the default fallback config, delete-style actions are disabled while move actions stay enabled and confirmation-gated.
 - Notebook- and document-level tree queries for direct child documents and blocks
 - Full-text search, SQL queries, tag search, backlink and backmention queries
@@ -27,7 +29,7 @@ Each tool uses a required `action` field instead of exposing dozens of endpoint-
 - `readonly`: read access only; all document and block writes are rejected
 - `none`: no read or write access
 - `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
-- For AI regression runs, preheat all 5 tools early so permission prompts do not interrupt the middle of a test
+- For AI regression runs, preheat all 7 tools early so permission prompts do not interrupt the middle of a test
 
 ## Timeline
 
@@ -49,6 +51,7 @@ The server instructions require explicit user confirmation before these actions 
 - `document(action="move")`
 - `block(action="delete")`
 - `block(action="move")`
+- `tag(action="remove")`
 
 If your client shows MCP instructions, the model should ask for confirmation before executing them.
 
@@ -89,6 +92,8 @@ The folder name in the path must match `plugin.json`: `siyuan-plugins-mcp-sisyph
 
 OpenClaw / mcporter users can follow [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md).
 
+Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
+
 ## Tool Model
 
 ### `notebook`
@@ -119,6 +124,10 @@ OpenClaw / mcporter users can follow [SKILL.md](https://github.com/yangtaihong59
 | `get_ids` | Get document IDs by human-readable path |
 | `get_child_blocks` | Get direct child blocks of a document |
 | `get_child_docs` | Get direct child documents of a document |
+| `list_tree` | List the nested document tree under a notebook path |
+| `search_docs` | Search documents by title keyword |
+| `get_doc` | Get document content and metadata by ID |
+| `create_daily_note` | Create or return today’s daily note for a notebook |
 
 Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/Weekly Note`). `rename`, `remove`, `move`, and `get_hpath` can use either `id` or `notebook + storage path`.
 
@@ -135,6 +144,12 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 | `get_children` | Get direct child blocks |
 | `transfer_ref` | Transfer block references |
 | `set_attrs` / `get_attrs` | Set or get block attributes |
+| `exists` | Check whether a block exists |
+| `info` | Get root document metadata for a block |
+| `breadcrumb` | Get breadcrumb path for a block |
+| `dom` | Get rendered DOM for a block |
+| `recent_updated` | List recently updated blocks |
+| `word_count` | Get word-count statistics for blocks |
 
 ### `file`
 
@@ -145,8 +160,21 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 | `render_sprig` | Render a Sprig template |
 | `export_md` | Export document as Markdown |
 | `export_resources` | Export resources as ZIP |
+
+### `system`
+
+| Action | Description |
+|--------|-------------|
 | `push_msg` / `push_err_msg` | Push notification or error message |
 | `get_version` / `get_current_time` | Get SiYuan version or current time |
+| `workspace_info` | Get SiYuan workspace metadata. High risk: exposes the absolute workspace path; disabled by default |
+| `network` | Get masked network proxy information |
+| `changelog` | Get the current version changelog when available |
+| `conf` | Get masked system configuration with summary-first progressive reading |
+| `sys_fonts` | List available system fonts with summary-first paginated reading |
+| `boot_progress` | Get current boot progress details |
+
+Tags are not created through a dedicated tag action. Write tags into block markdown as `#tag#` so SiYuan can recognize them.
 
 ### `search`
 
@@ -157,6 +185,15 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 | `search_tag` | Search tags by keyword |
 | `get_backlinks` | Find documents/blocks that reference a block |
 | `get_backmentions` | Find documents/blocks that mention a block name |
+
+### `tag`
+
+| Action | Description |
+|--------|-------------|
+| `list` | List workspace tags |
+| `rename` | Rename a tag label |
+| `remove` | Remove a tag label |
+
 
 ## Tool Toggles
 

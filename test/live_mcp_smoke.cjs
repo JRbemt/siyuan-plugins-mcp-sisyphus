@@ -45,10 +45,6 @@ const ALL_ENABLED_CONFIG = {
             render_sprig: true,
             export_md: true,
             export_resources: true,
-            push_msg: true,
-            push_err_msg: true,
-            get_version: true,
-            get_current_time: true,
         },
     },
     search: {
@@ -59,6 +55,25 @@ const ALL_ENABLED_CONFIG = {
             search_tag: true,
             get_backlinks: true,
             get_backmentions: true,
+        },
+    },
+    tag: {
+        enabled: true,
+        actions: { list: true, rename: true, remove: true },
+    },
+    system: {
+        enabled: true,
+        actions: {
+            workspace_info: true,
+            network: true,
+            changelog: true,
+            conf: true,
+            sys_fonts: true,
+            boot_progress: true,
+            push_msg: true,
+            push_err_msg: true,
+            get_version: true,
+            get_current_time: true,
         },
     },
 };
@@ -148,7 +163,7 @@ async function assertPermissionDenied(client, name, args) {
 async function assertDefaultToolList() {
     await withConfigMode('default', async () => withClient(async (client) => {
         const tools = (await client.listTools()).tools;
-        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search']);
+        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system']);
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
         assert.match(descriptions.notebook, /list, create, open, close, rename, get_conf, set_conf, get_permissions, get_child_docs/);
@@ -164,11 +179,18 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs/);
         assert.match(descriptions.block, /Enabled actions: insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs\./);
         assert.match(descriptions.block, /foldable block ID/);
-        assert.match(descriptions.file, /upload_asset, render_template, render_sprig, export_md, export_resources, push_msg, push_err_msg, get_version, get_current_time/);
+        assert.match(descriptions.file, /upload_asset, render_template, render_sprig, export_md, export_resources/);
         assert.match(descriptions.file, /base64-encoded file payload/);
         assert.match(descriptions.search, /fulltext, query_sql, search_tag, get_backlinks, get_backmentions/);
         assert.match(descriptions.search, /Enabled actions: fulltext, query_sql, search_tag, get_backlinks, get_backmentions\./);
         assert.match(descriptions.search, /read-only/i);
+        assert.match(descriptions.tag, /list, rename, remove/);
+        assert.match(descriptions.tag, /#标签#/);
+        assert.doesNotMatch(descriptions.system, /Enabled actions: .*workspace_info/);
+        assert.match(descriptions.system, /Enabled actions: network, changelog, conf, sys_fonts, boot_progress, push_msg, push_err_msg, get_version, get_current_time\./);
+        assert.match(descriptions.system, /workspace_info.*disabled by default|disabled by default.*workspace_info/i);
+        assert.match(descriptions.system, /conf: .*mode="get".*keyPath/);
+        assert.match(descriptions.system, /sys_fonts: .*mode="list".*offset\/limit\/query/);
 
         const schemas = Object.fromEntries(tools.map((tool) => [tool.name, tool.inputSchema]));
         for (const [name, schema] of Object.entries(schemas)) {
@@ -205,7 +227,8 @@ async function assertDefaultToolList() {
         const toolOverviewText = await readResourceText(client, 'siyuan://help/tool-overview');
         assert.match(toolOverviewText, /SiYuan MCP Tool Overview/);
         assert.match(toolOverviewText, /document\(action="move"\)/);
-        assert.match(toolOverviewText, /5 aggregated tools/);
+        assert.match(toolOverviewText, /7 aggregated tools/);
+        assert.match(toolOverviewText, /#标签#/);
 
         const documentPathText = await readResourceText(client, 'siyuan://help/document-path-semantics');
         assert.match(documentPathText, /Human-readable path/);
@@ -269,10 +292,10 @@ async function runLiveSmoke() {
             const preheatNotebook = await callToolJson(client, 'notebook', { action: 'list' });
             assert.ok(Array.isArray(preheatNotebook.json));
 
-            const version = await callToolJson(client, 'file', { action: 'get_version' });
+            const version = await callToolJson(client, 'system', { action: 'get_version' });
             assert.equal(typeof version.json.version, 'string');
 
-            const currentTime = await callToolJson(client, 'file', { action: 'get_current_time' });
+            const currentTime = await callToolJson(client, 'system', { action: 'get_current_time' });
             assert.equal(typeof currentTime.json.currentTime, 'number');
 
             const renderSprig = await callToolJson(client, 'file', {
@@ -508,7 +531,7 @@ async function runLiveSmoke() {
             assert.equal(exportMd.hPath, '/SourceDoc ID Renamed');
             assert.match(exportMd.content, /- doc append updated/);
 
-            const pushMsg = (await callToolJson(client, 'file', {
+            const pushMsg = (await callToolJson(client, 'system', {
                 action: 'push_msg',
                 msg: 'Codex live smoke test',
                 timeout: 1000,

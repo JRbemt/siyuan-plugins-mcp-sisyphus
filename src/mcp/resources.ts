@@ -15,6 +15,8 @@ import { DOCUMENT_VARIANTS } from './tools/document';
 import { FILE_VARIANTS } from './tools/file';
 import { NOTEBOOK_VARIANTS } from './tools/notebook';
 import { SEARCH_VARIANTS } from './tools/search';
+import { SYSTEM_VARIANTS } from './tools/system';
+import { TAG_VARIANTS } from './tools/tag';
 import { getSchemaProperties, getSchemaRequired, type ActionVariant, type JsonSchema } from './tools/shared';
 
 interface HelpResourceDefinition {
@@ -34,6 +36,8 @@ const VARIANTS_BY_CATEGORY: Record<ToolCategory, ActionVariant<string>[]> = {
     block: BLOCK_VARIANTS,
     file: FILE_VARIANTS,
     search: SEARCH_VARIANTS,
+    tag: TAG_VARIANTS,
+    system: SYSTEM_VARIANTS,
 };
 
 function getSchemaRequiredWithoutAction(schema: JsonSchema): string[] {
@@ -164,19 +168,22 @@ function renderToolOverview(): string {
     return [
         '# SiYuan MCP Tool Overview',
         '',
-        'This server exposes 5 aggregated tools: `notebook`, `document`, `block`, `file`, and `search`.',
+        'This server exposes 7 aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`.',
         '',
         '## High-risk actions',
         '',
         '- `notebook(action="remove")`',
         '- `document(action="remove")`, `document(action="move")`',
         '- `block(action="delete")`, `block(action="move")`',
+        '- `tag(action="remove")`',
         '',
         'Call these only after explicit user confirmation.',
         '',
         sections,
         '',
         '## More help',
+        '',
+        '- Tag creation: write tags into block markdown as `#标签#` so `tag(action="list")` can discover them.',
         '',
         `- Path semantics: \`${DOCUMENT_PATH_RESOURCE_URI}\``,
         `- Common examples: \`${EXAMPLES_RESOURCE_URI}\``,
@@ -230,7 +237,16 @@ function renderExamples(): string {
         '',
         '## Get the SiYuan version',
         '',
-        buildActionExamples('file', 'get_version')[0],
+        buildActionExamples('system', 'get_version')[0],
+        '',
+        '## Create tags via block markdown',
+        '',
+        formatJsonExample({
+            action: 'update',
+            id: '20240318112233-abc123',
+            dataType: 'markdown',
+            data: '#假期# #回家# #放松#',
+        }),
         '',
         '## Full-text search',
         '',

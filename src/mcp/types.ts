@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS } from "./config";
+import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS, SYSTEM_ACTIONS, TAG_ACTIONS } from "./config";
 
 const NotebookConfSchema = z.object({
     name: z.string().optional(),
@@ -190,6 +190,32 @@ export const DocumentSetIconSchema = z.object({
     icon: z.string().describe("Icon value, e.g., '1f4d4' for 📔 or custom icon path"),
 });
 
+export const DocumentListTreeSchema = z.object({
+    action: z.literal("list_tree"),
+    notebook: z.string().describe("Notebook ID"),
+    path: z.string().describe("Storage path or / for the notebook root"),
+});
+
+export const DocumentSearchDocsSchema = z.object({
+    action: z.literal("search_docs"),
+    notebook: z.string().describe("Notebook ID"),
+    query: z.string().describe("Keyword to search in document titles"),
+    path: z.string().optional().describe("Optional storage path to narrow the search scope"),
+});
+
+export const DocumentGetDocSchema = z.object({
+    action: z.literal("get_doc"),
+    id: z.string().describe("Document ID"),
+    mode: z.enum(["markdown", "html"]).optional().describe('Return mode: "markdown" (default) or "html"'),
+    size: z.number().optional().describe("Optional maximum content size hint"),
+});
+
+export const DocumentCreateDailyNoteSchema = z.object({
+    action: z.literal("create_daily_note"),
+    notebook: z.string().describe("Notebook ID"),
+    app: z.string().optional().describe("Optional app identifier passed through to SiYuan"),
+});
+
 export const BlockInsertSchema = z.object({
     action: z.literal("insert"),
     dataType: z.enum(["markdown", "dom"]).describe("Data format"),
@@ -278,6 +304,37 @@ export const BlockGetAttrsSchema = z.object({
     id: z.string().describe("Block ID"),
 });
 
+export const BlockExistsSchema = z.object({
+    action: z.literal("exists"),
+    id: z.string().describe("Block ID"),
+});
+
+export const BlockInfoSchema = z.object({
+    action: z.literal("info"),
+    id: z.string().describe("Block ID"),
+});
+
+export const BlockBreadcrumbSchema = z.object({
+    action: z.literal("breadcrumb"),
+    id: z.string().describe("Block ID"),
+    excludeTypes: z.array(z.string()).optional().describe("Optional block types to exclude from the breadcrumb"),
+});
+
+export const BlockDomSchema = z.object({
+    action: z.literal("dom"),
+    id: z.string().describe("Block ID"),
+});
+
+export const BlockRecentUpdatedSchema = z.object({
+    action: z.literal("recent_updated"),
+    count: z.number().optional().describe("Maximum number of recent blocks to return"),
+});
+
+export const BlockWordCountSchema = z.object({
+    action: z.literal("word_count"),
+    ids: z.array(z.string()).describe("One or more block IDs"),
+});
+
 export const FileUploadAssetSchema = z.object({
     action: z.literal("upload_asset"),
     assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),
@@ -305,26 +362,6 @@ export const FileExportResourcesSchema = z.object({
     action: z.literal("export_resources"),
     paths: z.array(z.string()).describe("Paths to export"),
     name: z.string().optional().describe("Export file name"),
-});
-
-export const FilePushMsgSchema = z.object({
-    action: z.literal("push_msg"),
-    msg: z.string().describe("Message content"),
-    timeout: z.number().optional().describe("Display timeout in milliseconds"),
-});
-
-export const FilePushErrMsgSchema = z.object({
-    action: z.literal("push_err_msg"),
-    msg: z.string().describe("Error message content"),
-    timeout: z.number().optional().describe("Display timeout in milliseconds"),
-});
-
-export const FileGetVersionSchema = z.object({
-    action: z.literal("get_version"),
-});
-
-export const FileGetCurrentTimeSchema = z.object({
-    action: z.literal("get_current_time"),
 });
 
 export const SearchActionSchema = z.enum(SEARCH_ACTIONS);
@@ -361,4 +398,78 @@ export const SearchGetBackmentionsSchema = z.object({
     action: z.literal("get_backmentions"),
     id: z.string().describe("Block or document ID to find backmentions for"),
     keyword: z.string().optional().describe("Filter backmentions by keyword"),
+});
+
+export const TagActionSchema = z.enum(TAG_ACTIONS);
+
+export const TagListSchema = z.object({
+    action: z.literal("list"),
+    sort: z.number().optional().describe("Optional tag sort mode"),
+    ignoreMaxListHint: z.boolean().optional().describe("Ignore the maximum list hint from SiYuan"),
+    app: z.string().optional().describe("Optional app identifier passed through to SiYuan"),
+});
+
+export const TagRenameSchema = z.object({
+    action: z.literal("rename"),
+    oldLabel: z.string().describe("Existing tag label"),
+    newLabel: z.string().describe("New tag label"),
+});
+
+export const TagRemoveSchema = z.object({
+    action: z.literal("remove"),
+    label: z.string().describe("Tag label to remove"),
+});
+
+export const SystemActionSchema = z.enum(SYSTEM_ACTIONS);
+
+export const SystemWorkspaceInfoSchema = z.object({
+    action: z.literal("workspace_info"),
+});
+
+export const SystemNetworkSchema = z.object({
+    action: z.literal("network"),
+});
+
+export const SystemChangelogSchema = z.object({
+    action: z.literal("changelog"),
+});
+
+export const SystemConfSchema = z.object({
+    action: z.literal("conf"),
+    mode: z.enum(["summary", "get"]).optional().describe('Read mode: "summary" returns a navigable overview, "get" reads a specific key path'),
+    keyPath: z.string().optional().describe('Dot/bracket path to a specific config field, e.g. "appearance.themeMode" or "account[0]"'),
+    maxDepth: z.number().int().min(0).max(5).optional().describe('Maximum object traversal depth for summary/get responses'),
+    maxItems: z.number().int().min(1).max(100).optional().describe('Maximum keys/items to include per level'),
+});
+
+export const SystemSysFontsSchema = z.object({
+    action: z.literal("sys_fonts"),
+    mode: z.enum(["summary", "list"]).optional().describe('Read mode: "summary" returns counts and samples, "list" returns paginated items'),
+    offset: z.number().int().min(0).optional().describe('Pagination offset for list mode'),
+    limit: z.number().int().min(1).max(200).optional().describe('Pagination size for list mode'),
+    query: z.string().optional().describe('Optional keyword filter for font names'),
+});
+
+export const SystemBootProgressSchema = z.object({
+    action: z.literal("boot_progress"),
+});
+
+export const SystemPushMsgSchema = z.object({
+    action: z.literal("push_msg"),
+    msg: z.string().describe("Message content"),
+    timeout: z.number().optional().describe("Display timeout in milliseconds"),
+});
+
+export const SystemPushErrMsgSchema = z.object({
+    action: z.literal("push_err_msg"),
+    msg: z.string().describe("Error message content"),
+    timeout: z.number().optional().describe("Display timeout in milliseconds"),
+});
+
+export const SystemGetVersionSchema = z.object({
+    action: z.literal("get_version"),
+});
+
+export const SystemGetCurrentTimeSchema = z.object({
+    action: z.literal("get_current_time"),
 });

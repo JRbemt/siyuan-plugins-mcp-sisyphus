@@ -13,6 +13,8 @@ import { callDocumentTool, listDocumentTools } from './tools/document';
 import { callFileTool, listFileTools } from './tools/file';
 import { callNotebookTool, listNotebookTools } from './tools/notebook';
 import { callSearchTool, listSearchTools } from './tools/search';
+import { callSystemTool, listSystemTools } from './tools/system';
+import { callTagTool, listTagTools } from './tools/tag';
 
 const PLUGIN_CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
 
@@ -25,6 +27,7 @@ Before calling any of the following actions, you MUST clearly describe the actio
 - notebook(action="remove")
 - document(action="remove"), document(action="move")
 - block(action="delete"), block(action="move")
+- tag(action="remove")
 
 Flow: State "I will do X. Proceed?" and only call the tool after the user explicitly agrees.
 
@@ -36,6 +39,11 @@ Block insertion semantics:
 - block(action="prepend") with a document ID inserts at the start of the document.
 - block(action="append") with a document ID inserts at the end of the document.
 - With a block ID, prepend/append operate on that block's child list.
+
+Tag creation semantics:
+- There is no direct create action for tags.
+- To create a real SiYuan tag in block markdown, use #标签# with both leading and trailing # characters.
+- Example: block(action="update", dataType="markdown", data="#假期# #回家#")
 `;
 
 
@@ -111,6 +119,8 @@ function getToolsByConfig(config: ToolConfig) {
         ...listBlockTools(config.block),
         ...listFileTools(config.file),
         ...listSearchTools(config.search),
+        ...listTagTools(config.tag),
+        ...listSystemTools(config.system),
     ];
 }
 
@@ -194,6 +204,8 @@ export async function createSiYuanServer(): Promise<Server> {
             case 'block': return callBlockTool(client, args, config.block, permMgr);
             case 'file': return callFileTool(client, args, config.file, permMgr);
             case 'search': return callSearchTool(client, args, config.search, permMgr);
+            case 'tag': return callTagTool(client, args, config.tag, permMgr);
+            case 'system': return callSystemTool(client, args, config.system, permMgr);
         }
     });
 

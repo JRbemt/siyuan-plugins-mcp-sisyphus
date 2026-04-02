@@ -2,7 +2,7 @@
 
 ## 快速认知
 
-当前版本不再暴露 41 个零散 tool，而是统一为 4 个聚合入口：
+当前版本不再暴露零散 endpoint 风格 tool，而是统一为 7 个聚合入口：
 
 - `notebook`
 - `document`
@@ -85,6 +85,9 @@
 - `render_sprig`
 - `export_md`
 - `export_resources`
+
+### `system`
+
 - `push_msg`
 - `push_err_msg`
 - `get_version`
@@ -170,11 +173,13 @@
 }
 ```
 
+如果要创建思源标签，请把 Markdown 写成 `#标签#`，例如：`#假期# #回家# #放松#`。
+
 ### 获取思源版本
 
 ```json
 {
-  "name": "file",
+  "name": "system",
   "arguments": {
     "action": "get_version"
   }

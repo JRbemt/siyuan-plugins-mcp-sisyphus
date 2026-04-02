@@ -7,18 +7,24 @@ import type { PermissionManager } from '../permissions';
 import {
     BlockActionSchema,
     BlockAppendSchema,
+    BlockBreadcrumbSchema,
     BlockDeleteSchema,
+    BlockDomSchema,
+    BlockExistsSchema,
     BlockFoldSchema,
     BlockGetAttrsSchema,
     BlockGetChildrenSchema,
     BlockGetKramdownSchema,
+    BlockInfoSchema,
     BlockInsertSchema,
     BlockMoveSchema,
     BlockPrependSchema,
+    BlockRecentUpdatedSchema,
     BlockSetAttrsSchema,
     BlockTransferRefSchema,
     BlockUnfoldSchema,
     BlockUpdateSchema,
+    BlockWordCountSchema,
 } from '../types';
 import { ensurePermissionForDocumentId } from './context';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
@@ -122,6 +128,43 @@ export const BLOCK_VARIANTS: ActionVariant<BlockAction>[] = [
         schema: createActionSchema('get_attrs', {
             id: { type: 'string', description: 'Block ID' },
         }, ['id'], 'Get block attributes.'),
+    },
+    {
+        action: 'exists',
+        schema: createActionSchema('exists', {
+            id: { type: 'string', description: 'Block ID' },
+        }, ['id'], 'Check whether a block exists.'),
+    },
+    {
+        action: 'info',
+        schema: createActionSchema('info', {
+            id: { type: 'string', description: 'Block ID' },
+        }, ['id'], 'Get block position and root document metadata.'),
+    },
+    {
+        action: 'breadcrumb',
+        schema: createActionSchema('breadcrumb', {
+            id: { type: 'string', description: 'Block ID' },
+            excludeTypes: { type: 'array', items: { type: 'string' }, description: 'Optional block types to exclude' },
+        }, ['id'], 'Get the breadcrumb path for a block.'),
+    },
+    {
+        action: 'dom',
+        schema: createActionSchema('dom', {
+            id: { type: 'string', description: 'Block ID' },
+        }, ['id'], 'Get rendered DOM for a block.'),
+    },
+    {
+        action: 'recent_updated',
+        schema: createActionSchema('recent_updated', {
+            count: { type: 'number', description: 'Maximum number of recent blocks to return' },
+        }, [], 'Get recently updated blocks.'),
+    },
+    {
+        action: 'word_count',
+        schema: createActionSchema('word_count', {
+            ids: { type: 'array', items: { type: 'string' }, description: 'One or more block IDs' },
+        }, ['ids'], 'Get word-count statistics for blocks.'),
     },
 ];
 
@@ -292,6 +335,58 @@ export async function callBlockTool(
                     return denied;
                 }
                 const result = await attributeApi.getBlockAttrs(client, parsed.id);
+                return createJsonResult(result);
+            }
+            case 'exists': {
+                const parsed = BlockExistsSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const exists = await blockApi.checkBlockExist(client, parsed.id);
+                return createJsonResult({ id: parsed.id, exists });
+            }
+            case 'info': {
+                const parsed = BlockInfoSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const result = await blockApi.getBlockInfo(client, parsed.id);
+                return createJsonResult(result);
+            }
+            case 'breadcrumb': {
+                const parsed = BlockBreadcrumbSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const result = await blockApi.getBlockBreadcrumb(client, parsed.id, parsed.excludeTypes);
+                return createJsonResult(result);
+            }
+            case 'dom': {
+                const parsed = BlockDomSchema.parse(rawArgs);
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                if (denied) {
+                    return denied;
+                }
+                const result = await blockApi.getBlockDOM(client, parsed.id);
+                return createJsonResult(result);
+            }
+            case 'recent_updated': {
+                BlockRecentUpdatedSchema.parse(rawArgs);
+                const result = await blockApi.getRecentUpdatedBlocks(client);
+                return createJsonResult(result);
+            }
+            case 'word_count': {
+                const parsed = BlockWordCountSchema.parse(rawArgs);
+                for (const id of parsed.ids) {
+                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, id, 'read');
+                    if (denied) {
+                        return denied;
+                    }
+                }
+                const result = await blockApi.getBlocksWordCount(client, parsed.ids);
                 return createJsonResult(result);
             }
             default: {

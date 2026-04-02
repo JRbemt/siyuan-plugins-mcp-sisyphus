@@ -7,10 +7,6 @@ import {
     FileActionSchema,
     FileExportMdSchema,
     FileExportResourcesSchema,
-    FileGetCurrentTimeSchema,
-    FileGetVersionSchema,
-    FilePushErrMsgSchema,
-    FilePushMsgSchema,
     FileRenderSprigSchema,
     FileRenderTemplateSchema,
     FileUploadAssetSchema,
@@ -55,34 +51,12 @@ export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
             name: { type: 'string', description: 'Export file name' },
         }, ['paths'], 'Export resources as a ZIP archive.'),
     },
-    {
-        action: 'push_msg',
-        schema: createActionSchema('push_msg', {
-            msg: { type: 'string', description: 'Message content' },
-            timeout: { type: 'number', description: 'Display timeout in milliseconds' },
-        }, ['msg'], 'Push a notification message.'),
-    },
-    {
-        action: 'push_err_msg',
-        schema: createActionSchema('push_err_msg', {
-            msg: { type: 'string', description: 'Error message content' },
-            timeout: { type: 'number', description: 'Display timeout in milliseconds' },
-        }, ['msg'], 'Push an error notification message.'),
-    },
-    {
-        action: 'get_version',
-        schema: createActionSchema('get_version', {}, [], 'Get the SiYuan system version.'),
-    },
-    {
-        action: 'get_current_time',
-        schema: createActionSchema('get_current_time', {}, [], 'Get the current system time.'),
-    },
 ];
 
 export function listFileTools(config: CategoryToolConfig<FileAction>) {
     return buildAggregatedTool(
         FILE_TOOL_NAME,
-        '📁 Grouped file and system operations.',
+        '📁 Grouped file and asset operations.',
         config,
         FILE_VARIANTS,
         {
@@ -143,26 +117,6 @@ export async function callFileTool(
                 const parsed = FileExportResourcesSchema.parse(rawArgs);
                 const result = await fileApi.exportResources(client, parsed.paths, parsed.name);
                 return createJsonResult(result);
-            }
-            case 'push_msg': {
-                const parsed = FilePushMsgSchema.parse(rawArgs);
-                const result = await fileApi.pushMsg(client, parsed.msg, parsed.timeout);
-                return createJsonResult(result);
-            }
-            case 'push_err_msg': {
-                const parsed = FilePushErrMsgSchema.parse(rawArgs);
-                const result = await fileApi.pushErrMsg(client, parsed.msg, parsed.timeout);
-                return createJsonResult(result);
-            }
-            case 'get_version': {
-                FileGetVersionSchema.parse(rawArgs);
-                const result = await fileApi.getVersion(client);
-                return createJsonResult({ version: result });
-            }
-            case 'get_current_time': {
-                FileGetCurrentTimeSchema.parse(rawArgs);
-                const result = await fileApi.getCurrentTime(client);
-                return createJsonResult({ currentTime: result });
             }
             default: {
                 const _exhaustive: never = parsedAction;

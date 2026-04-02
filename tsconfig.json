@@ -34,7 +34,8 @@
         "types": [
             "node",
             "vite/client",
-            "svelte"
+            "svelte",
+            "vitest/globals"
         ],
         // "baseUrl": "./src",
         "paths": {
@@ -48,7 +49,8 @@
         "src/**/*.d.ts",
         "src/**/*.tsx",
         "src/**/*.vue",
-        "src/**/*.svelte"
+        "src/**/*.svelte",
+        "tests/**/*.ts"
     ],
     "references": [
         {

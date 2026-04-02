@@ -184,3 +184,48 @@ export async function listDocsByPath(
         path,
     } as IReqListDocsByPath);
 }
+
+export async function listDocTree(
+    client: SiYuanClient,
+    notebook: string,
+    path: string,
+): Promise<unknown> {
+    return client.request('/api/filetree/listDocTree', { notebook, path });
+}
+
+export async function searchDocs(
+    client: SiYuanClient,
+    keyword: string,
+    flashcard?: boolean,
+    excludeIDs?: string[],
+): Promise<unknown> {
+    return client.request('/api/filetree/searchDocs', {
+        k: keyword,
+        flashcard,
+        excludeIDs,
+    });
+}
+
+export async function getDoc(
+    client: SiYuanClient,
+    id: string,
+    mode?: number,
+    size?: number,
+): Promise<unknown> {
+    return client.request('/api/filetree/getDoc', {
+        id,
+        mode,
+        size,
+    });
+}
+
+export async function createDailyNote(
+    client: SiYuanClient,
+    notebook: string,
+    app?: string,
+): Promise<{ id: string }> {
+    return client.request<{ id: string }>('/api/filetree/createDailyNote', {
+        notebook,
+        app,
+    });
+}

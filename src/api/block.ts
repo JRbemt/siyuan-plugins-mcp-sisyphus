@@ -172,3 +172,31 @@ export async function transferBlockRef(
     };
     return client.request<null>('/api/block/transferBlockRef', request);
 }
+
+export async function checkBlockExist(client: SiYuanClient, id: string): Promise<boolean> {
+    return client.request<boolean>('/api/block/checkBlockExist', { id });
+}
+
+export async function getBlockInfo(client: SiYuanClient, id: string): Promise<unknown> {
+    return client.request('/api/block/getBlockInfo', { id });
+}
+
+export async function getBlockBreadcrumb(
+    client: SiYuanClient,
+    id: string,
+    excludeTypes?: string[],
+): Promise<unknown> {
+    return client.request('/api/block/getBlockBreadcrumb', { id, excludeTypes });
+}
+
+export async function getBlockDOM(client: SiYuanClient, id: string): Promise<{ id: string; dom: string }> {
+    return client.request<{ id: string; dom: string }>('/api/block/getBlockDOM', { id });
+}
+
+export async function getRecentUpdatedBlocks(client: SiYuanClient): Promise<unknown> {
+    return client.request('/api/block/getRecentUpdatedBlocks', {});
+}
+
+export async function getBlocksWordCount(client: SiYuanClient, ids: string[]): Promise<unknown> {
+    return client.request('/api/block/getBlocksWordCount', { ids });
+}
