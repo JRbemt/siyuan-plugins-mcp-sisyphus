@@ -3,7 +3,13 @@ import path from 'path';
 
 import type { SiYuanClient } from '../api/client';
 
-export type NotebookPermission = 'none' | 'readonly' | 'write';
+export type NotebookPermission = 'none' | 'r' | 'rw' | 'rwd';
+const VALID_NOTEBOOK_PERMISSIONS: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
+const LEGACY_NOTEBOOK_PERMISSION_MAP = {
+    none: 'none',
+    readonly: 'r',
+    write: 'rw',
+} as const;
 
 const PERMISSIONS_FILENAME = 'notebookPermissions';
 const PERMISSIONS_API_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/notebookPermissions';
@@ -13,6 +19,46 @@ function logPermissionDebug(...args: unknown[]) {
     if (DEBUG_PERMISSIONS) {
         console.error('[MCP]', ...args);
     }
+}
+
+function isNotebookPermission(value: unknown): value is NotebookPermission {
+    return typeof value === 'string' && VALID_NOTEBOOK_PERMISSIONS.includes(value as NotebookPermission);
+}
+
+function migrateNotebookPermission(value: unknown): NotebookPermission {
+    if (isNotebookPermission(value)) {
+        return value;
+    }
+    if (typeof value === 'string' && value in LEGACY_NOTEBOOK_PERMISSION_MAP) {
+        return LEGACY_NOTEBOOK_PERMISSION_MAP[value as keyof typeof LEGACY_NOTEBOOK_PERMISSION_MAP];
+    }
+    return 'none';
+}
+
+function normalizePermissionsRecord(value: unknown): Record<string, NotebookPermission> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {};
+    }
+
+    return Object.fromEntries(
+        Object.entries(value).map(([notebookId, permission]) => [
+            notebookId,
+            migrateNotebookPermission(permission),
+        ]),
+    );
+}
+
+function hasPermissionRecordChanged(rawValue: unknown, normalizedValue: Record<string, NotebookPermission>): boolean {
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+        return false;
+    }
+
+    const rawEntries = Object.entries(rawValue);
+    if (rawEntries.length !== Object.keys(normalizedValue).length) {
+        return true;
+    }
+
+    return rawEntries.some(([notebookId, permission]) => normalizedValue[notebookId] !== permission);
 }
 
 function resolvePermissionsPaths(): string[] {
@@ -58,8 +104,12 @@ export class PermissionManager {
             try {
                 const content = await this.client.readFile(PERMISSIONS_API_PATH);
                 if (content) {
-                    this.permissions = JSON.parse(content);
+                    const rawPermissions = JSON.parse(content);
+                    this.permissions = normalizePermissionsRecord(rawPermissions);
                     this.loaded = true;
+                    if (hasPermissionRecordChanged(rawPermissions, this.permissions)) {
+                        await this.save();
+                    }
                     logPermissionDebug('Permissions loaded from API:', Object.keys(this.permissions).length, 'entries');
                     return;
                 }
@@ -73,9 +123,13 @@ export class PermissionManager {
         for (const p of candidates) {
             if (!fs.existsSync(p)) continue;
             try {
-                this.permissions = JSON.parse(fs.readFileSync(p, 'utf-8'));
+                const rawPermissions = JSON.parse(fs.readFileSync(p, 'utf-8'));
+                this.permissions = normalizePermissionsRecord(rawPermissions);
                 this.savePath = p;
                 this.loaded = true;
+                if (hasPermissionRecordChanged(rawPermissions, this.permissions)) {
+                    await this.save();
+                }
                 logPermissionDebug('Permissions loaded from filesystem:', p, Object.keys(this.permissions).length, 'entries');
                 return;
             } catch (e) {
@@ -123,7 +177,8 @@ export class PermissionManager {
     }
 
     get(notebookId: string): NotebookPermission {
-        return this.permissions[notebookId] ?? 'write';
+        const permission = this.permissions[notebookId];
+        return isNotebookPermission(permission) ? permission : 'rwd';
     }
 
     async set(notebookId: string, perm: NotebookPermission): Promise<void> {
@@ -140,6 +195,10 @@ export class PermissionManager {
     }
 
     canWrite(notebookId: string): boolean {
-        return this.get(notebookId) === 'write';
+        return ['rw', 'rwd'].includes(this.get(notebookId));
+    }
+
+    canDelete(notebookId: string): boolean {
+        return this.get(notebookId) === 'rwd';
     }
 }

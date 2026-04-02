@@ -25,7 +25,7 @@ export async function uploadAsset(
 ): Promise<{ errFiles: string[]; succMap: { [key: string]: string } }> {
     const formData = new FormData();
     formData.append('assetsDirPath', assetsDirPath);
-    formData.append('file', file, fileName || file.name);
+    formData.append('file[]', file, fileName || file.name);
 
     const url = `${client['baseUrl']}/api/asset/upload`;
 

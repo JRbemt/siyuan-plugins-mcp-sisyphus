@@ -70,7 +70,7 @@ function buildExampleValue(fieldName: string, schema: JsonSchema): unknown {
         case 'toNotebook':
             return '20210808180117-czj9bvb';
         case 'toPath':
-            return '/20240318112233-parent.sy';
+            return '/20240318112233-existing-parent.sy';
         case 'path':
             return description.includes('Human-readable')
                 ? '/Inbox/Weekly Note'
@@ -205,6 +205,7 @@ function renderDocumentPathSemantics(): string {
         '- Used by `document(action="rename")`, `document(action="remove")`, `document(action="move")`, and `document(action="get_hpath")` when you pass `notebook + path`.',
         '- Obtain it from `document(action="get_path")` first.',
         '- Example: `/20240318112233-abc123.sy`',
+        '- For path-based `document(action="move")`, `toPath` must point to an existing destination document.',
         '',
         '## Safe calling order',
         '',
@@ -216,6 +217,7 @@ function renderDocumentPathSemantics(): string {
         '',
         '- `document(action="create")` accepts `/Inbox/Weekly Note`.',
         '- `document(action="rename", notebook=..., path=...)` expects a storage path like `/20240318112233-abc123.sy`.',
+        '- `document(action="move", fromPaths=..., toNotebook=..., toPath=...)` does not accept a non-existent `.sy` path or a plain directory-like path as the destination.',
     ].join('\n');
 }
 

@@ -40,7 +40,7 @@ Warn the user before attempting these — they may need to enable them manually.
 
 ## Permission System
 
-Three levels per notebook: `write` (full access), `readonly` (read only), `none` (all blocked).
+Four levels per notebook: `rwd` (read/write/delete), `rw` (read/write, no delete), `r` (read only), `none` (all blocked).
 
 Check with `notebook(action="get_permissions")`. Change with `notebook(action="set_permission")`.
 
@@ -50,8 +50,8 @@ On denial, the error includes actionable context:
   "error": {
     "type": "permission_denied",
     "notebook": "20260401...",
-    "current_permission": "readonly",
-    "required_permission": "write"
+    "current_permission": "r",
+    "required_permission": "delete"
   }
 }
 ```
@@ -78,7 +78,7 @@ Before calling any of these, describe the action and wait for explicit user agre
 | `rename` | write | Requires `notebook` + `name` |
 | `get_conf` / `set_conf` | read/write | `set_conf` takes a `conf` object (name, closed, dailyNoteSavePath, etc.) |
 | `get_permissions` | read | Returns all notebooks with their permission level |
-| `set_permission` | write | **Disabled by default.** Set `none` / `readonly` / `write` |
+| `set_permission` | write | **Disabled by default.** Set `none` / `r` / `rw` / `rwd` |
 | `get_child_docs` | read | Direct children at notebook root. `.name` field has `.sy` suffix (filename, not title) |
 
 ### `document`
@@ -88,7 +88,7 @@ Before calling any of these, describe the action and wait for explicit user agre
 | `create` | write | `notebook` + `path` (human-readable) + `markdown`. Parent paths must already exist |
 | `rename` | write | Either `id` + `title` OR `notebook` + `path` (storage) + `title` |
 | `remove` | write | **Disabled by default.** Either `id` OR `notebook` + `path` (storage) |
-| `move` | write | Either `fromIDs` + `toID` OR `fromPaths` + `toNotebook` + `toPath` (storage) |
+| `move` | write | Either `fromIDs` + `toID` OR `fromPaths` + `toNotebook` + `toPath` (storage). For path-based moves, `toPath` must be an existing destination document |
 | `get_path` | read | Returns `{notebook, path}` — the storage path for an ID |
 | `get_hpath` | read | Returns human-readable hierarchy path. Either `id` OR `notebook` + `path` (storage) |
 | `get_ids` | read | `notebook` + `path` (human-readable). Returns array of document IDs |
@@ -104,7 +104,7 @@ Before calling any of these, describe the action and wait for explicit user agre
 | `append` | write | Inserts at end. Same parentID semantics as prepend |
 | `update` | write | `dataType` + `data` + `id`. Replaces block content |
 | `delete` | write | **Disabled by default.** Requires `id` |
-| `move` | write | `id` + at least one of `previousID` / `parentID`. May return null — use `get_children` to verify |
+| `move` | write | `id` + at least one of `previousID` / `parentID`. MCP returns a structured success object; use `get_children` to verify placement if needed |
 | `fold` / `unfold` | write | Must be a foldable block ID, NOT a document ID |
 | `get_kramdown` | read | Returns block content in kramdown format with IAL attributes |
 | `get_children` | read | Works with both document IDs AND block IDs. Returns direct children |

@@ -23,7 +23,7 @@ export interface ChildDocumentSummary {
     subFileCount?: number;
 }
 
-type PermissionRequirement = 'read' | 'write';
+type PermissionRequirement = 'read' | 'write' | 'delete';
 
 function normalizePath(value: string): string {
     return value.startsWith('/') ? value : `/${value}`;
@@ -52,9 +52,11 @@ async function checkPermissionForDocumentContext(
     required: PermissionRequirement,
 ): Promise<ToolResult | null> {
     await permMgr.reload();
-    const allowed = required === 'write'
-        ? permMgr.canWrite(context.notebook)
-        : permMgr.canRead(context.notebook);
+    const allowed = required === 'delete'
+        ? permMgr.canDelete(context.notebook)
+        : required === 'write'
+            ? permMgr.canWrite(context.notebook)
+            : permMgr.canRead(context.notebook);
     if (!allowed) {
         return createPermissionDeniedResult(context.notebook, permMgr.get(context.notebook), required);
     }
@@ -78,9 +80,11 @@ export async function ensurePermissionForNotebook(
     required: PermissionRequirement,
 ): Promise<ToolResult | null> {
     await permMgr.reload();
-    const allowed = required === 'write'
-        ? permMgr.canWrite(notebookId)
-        : permMgr.canRead(notebookId);
+    const allowed = required === 'delete'
+        ? permMgr.canDelete(notebookId)
+        : required === 'write'
+            ? permMgr.canWrite(notebookId)
+            : permMgr.canRead(notebookId);
     if (!allowed) {
         return createPermissionDeniedResult(notebookId, permMgr.get(notebookId), required);
     }

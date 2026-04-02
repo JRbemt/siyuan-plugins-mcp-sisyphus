@@ -157,7 +157,7 @@
     "notebook_action_get_permissions": "获取笔记本权限",
     "desc_notebook_action_get_permissions": "获取所有笔记本的 MCP 访问权限。",
     "notebook_action_set_permission": "设置笔记本权限",
-    "desc_notebook_action_set_permission": "设置笔记本的 MCP 访问权限（none 禁止 / readonly 只读 / write 读写）。",
+    "desc_notebook_action_set_permission": "设置笔记本的 MCP 访问权限（none 无权限 / r 只读 / rw 读写不可删除 / rwd 读写可删除）。",
     "notebook_action_get_child_docs": "获取子文档",
     "desc_notebook_action_get_child_docs": "获取笔记本根目录下的直属子文档。",
 
@@ -298,9 +298,10 @@
 
     "Permissions": "权限管理",
     "mcpPermDesc": "该笔记本对 MCP 客户端的访问权限",
-    "mcpPermWrite": "读写",
-    "mcpPermReadonly": "只读",
-    "mcpPermNone": "禁止访问",
+    "mcpPermRead": "只读",
+    "mcpPermReadWrite": "读写不可删除",
+    "mcpPermReadWriteDelete": "读写可删除",
+    "mcpPermNone": "无权限",
 
     "mcpConfigSaved": "✅ MCP Tools 配置已保存到文件",
     "mcpConfigSavedBackup": "⚠️ MCP Tools 配置已保存（仅备份）",

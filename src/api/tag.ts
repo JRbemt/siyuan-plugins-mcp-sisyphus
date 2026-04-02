@@ -4,7 +4,8 @@ export async function listTags(
     client: SiYuanClient,
     options: { sort?: number; ignoreMaxListHint?: boolean; app?: string } = {},
 ): Promise<unknown> {
-    return client.request('/api/tag/getTag', options);
+    const payload = { ...options, app: options.app || 'siyuan-mcp-sisyphus' };
+    return client.request('/api/tag/getTag', payload);
 }
 
 export async function renameTag(client: SiYuanClient, oldLabel: string, newLabel: string): Promise<null> {

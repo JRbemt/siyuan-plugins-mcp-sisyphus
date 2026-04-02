@@ -93,7 +93,7 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
     },
     {
         action: 'get_permissions',
-        schema: createActionSchema('get_permissions', {}, [], 'Get permission levels for all notebooks. Returns each notebook with its permission: "write" (full access, default), "readonly" (read only), or "none" (no access).'),
+        schema: createActionSchema('get_permissions', {}, [], 'Get permission levels for all notebooks. Returns each notebook with its permission: "none" (no access), "r" (read only), "rw" (read/write without delete), or "rwd" (read/write/delete, default).'),
     },
     {
         action: 'set_permission',
@@ -101,8 +101,8 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
             notebook: { type: 'string', description: 'Notebook ID' },
             permission: {
                 type: 'string',
-                enum: ['none', 'readonly', 'write'],
-                description: 'Permission level: "none" blocks all access, "readonly" allows reads only, "write" allows full access (default)',
+                enum: ['none', 'r', 'rw', 'rwd'],
+                description: 'Permission level: "none" blocks all access, "r" allows read only, "rw" allows read/write without delete, "rwd" allows read/write/delete (default)',
             },
         }, ['notebook', 'permission'], 'Set the permission level for a notebook.'),
     },
@@ -125,6 +125,24 @@ export function listNotebookTools(config: CategoryToolConfig<NotebookAction>) {
             actionHints: NOTEBOOK_ACTION_HINTS,
         },
     );
+}
+
+function normalizeNotebookChildDocsError(error: unknown, notebookId: string, exists: boolean, closed: boolean): Error {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (!exists) {
+        return new Error(`Failed to get child documents: notebook "${notebookId}" does not exist.`);
+    }
+
+    if (message.includes('permission')) {
+        return new Error(`Failed to get child documents for notebook "${notebookId}": permission denied by SiYuan. ${message}`);
+    }
+
+    if (closed) {
+        return new Error(`Failed to get child documents for notebook "${notebookId}": notebook is currently closed or still initializing. ${message}`);
+    }
+
+    return new Error(`Failed to get child documents for notebook "${notebookId}" at "/". ${message}`);
 }
 
 export async function callNotebookTool(
@@ -173,7 +191,7 @@ export async function callNotebookTool(
             }
             case 'remove': {
                 const parsed = NotebookRemoveSchema.parse(rawArgs);
-                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
+                const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'delete');
                 if (denied) return denied;
                 await notebookApi.removeNotebook(client, parsed.notebook);
                 return createJsonResult({ success: true, notebook: parsed.notebook });
@@ -228,7 +246,19 @@ export async function callNotebookTool(
                 if (denied) {
                     return denied;
                 }
-                const children = await listChildDocumentsByPath(client, parsed.notebook, '/');
+                const notebookList = await notebookApi.listNotebooks(client);
+                const notebook = notebookList.notebooks.find((item) => item.id === parsed.notebook);
+
+                if (!notebook) {
+                    throw normalizeNotebookChildDocsError(new Error('Notebook not found in lsNotebooks result.'), parsed.notebook, false, false);
+                }
+
+                let children;
+                try {
+                    children = await listChildDocumentsByPath(client, parsed.notebook, '/');
+                } catch (error) {
+                    throw normalizeNotebookChildDocsError(error, parsed.notebook, true, Boolean(notebook.closed));
+                }
                 return createJsonResult(children);
             }
             default: {

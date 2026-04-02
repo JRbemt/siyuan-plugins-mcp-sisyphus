@@ -157,7 +157,7 @@
     "notebook_action_get_permissions": "Get Notebook Permissions",
     "desc_notebook_action_get_permissions": "Get MCP access permissions for all notebooks.",
     "notebook_action_set_permission": "Set Notebook Permission",
-    "desc_notebook_action_set_permission": "Set MCP access permission for a notebook (none / readonly / write).",
+    "desc_notebook_action_set_permission": "Set MCP access permission for a notebook (none / r / rw / rwd).",
     "notebook_action_get_child_docs": "Get Child Documents",
     "desc_notebook_action_get_child_docs": "Get direct child documents at the notebook root.",
 
@@ -270,8 +270,9 @@
 
     "Permissions": "Permissions",
     "mcpPermDesc": "MCP client access level for this notebook",
-    "mcpPermWrite": "Full Access",
-    "mcpPermReadonly": "Read Only",
+    "mcpPermRead": "Read Only",
+    "mcpPermReadWrite": "Read/Write (No Delete)",
+    "mcpPermReadWriteDelete": "Read/Write/Delete",
     "mcpPermNone": "No Access",
 
     "mcpConfigSaved": "✅ MCP Tools configuration saved to file",

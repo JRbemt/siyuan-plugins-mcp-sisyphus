@@ -27,7 +27,7 @@ import {
     BlockWordCountSchema,
 } from '../types';
 import { ensurePermissionForDocumentId } from './context';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, type ActionVariant, type ToolResult } from './shared';
 
 export const BLOCK_TOOL_NAME = 'block';
 
@@ -179,10 +179,40 @@ export function listBlockTools(config: CategoryToolConfig<BlockAction>) {
             actionHints: BLOCK_ACTION_HINTS,
             propertyDescriptionOverrides: {
                 parentID: 'Parent block or document ID. With prepend/append, a document ID targets the document head or tail; a block ID targets that block\'s child list.',
-                previousID: 'Sibling block ID to position after. For block(action="move"), provide previousID, parentID, or both to describe the destination.',
+                previousID: 'Sibling block ID to position after. For block(action="move"), provide previousID, parentID, or both to describe the destination. Successful moves return a structured success object.',
             },
         },
     );
+}
+
+function createSlimWriteResult(
+    rawResult: unknown,
+    context: {
+        action: 'insert' | 'prepend' | 'append';
+        dataType: string;
+        parentID?: string;
+        previousID?: string;
+        nextID?: string;
+    },
+): ToolResult {
+    const operationBatch = Array.isArray(rawResult) ? rawResult[0] : rawResult;
+    const firstOperation = operationBatch && typeof operationBatch === 'object' && Array.isArray((operationBatch as { doOperations?: unknown[] }).doOperations)
+        ? (operationBatch as { doOperations: Array<Record<string, unknown>> }).doOperations[0]
+        : undefined;
+
+    const id = typeof firstOperation?.id === 'string' ? firstOperation.id : undefined;
+    const parentID = typeof firstOperation?.parentID === 'string' ? firstOperation.parentID : context.parentID;
+    const previousID = typeof firstOperation?.previousID === 'string' ? firstOperation.previousID : context.previousID;
+    const nextID = typeof firstOperation?.nextID === 'string' ? firstOperation.nextID : context.nextID;
+
+    return createWriteSuccessResult({
+        action: context.action,
+        ...(id ? { id } : {}),
+        ...(parentID ? { parentID } : {}),
+        ...(previousID ? { previousID } : {}),
+        ...(nextID ? { nextID } : {}),
+        dataType: context.dataType,
+    });
 }
 
 export async function callBlockTool(
@@ -211,7 +241,13 @@ export async function callBlockTool(
                     }
                 }
                 const result = await blockApi.insertBlock(client, parsed.dataType, parsed.data, parsed.nextID, parsed.previousID, parsed.parentID);
-                return createJsonResult(result);
+                return createSlimWriteResult(result, {
+                    action: 'insert',
+                    dataType: parsed.dataType,
+                    parentID: parsed.parentID,
+                    previousID: parsed.previousID,
+                    nextID: parsed.nextID,
+                });
             }
             case 'prepend': {
                 const parsed = BlockPrependSchema.parse(rawArgs);
@@ -220,7 +256,11 @@ export async function callBlockTool(
                     return denied;
                 }
                 const result = await blockApi.prependBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-                return createJsonResult(result);
+                return createSlimWriteResult(result, {
+                    action: 'prepend',
+                    dataType: parsed.dataType,
+                    parentID: parsed.parentID,
+                });
             }
             case 'append': {
                 const parsed = BlockAppendSchema.parse(rawArgs);
@@ -229,7 +269,11 @@ export async function callBlockTool(
                     return denied;
                 }
                 const result = await blockApi.appendBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-                return createJsonResult(result);
+                return createSlimWriteResult(result, {
+                    action: 'append',
+                    dataType: parsed.dataType,
+                    parentID: parsed.parentID,
+                });
             }
             case 'update': {
                 const parsed = BlockUpdateSchema.parse(rawArgs);
@@ -242,7 +286,7 @@ export async function callBlockTool(
             }
             case 'delete': {
                 const parsed = BlockDeleteSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
                 if (denied) {
                     return denied;
                 }
@@ -268,7 +312,11 @@ export async function callBlockTool(
                     }
                 }
                 const result = await blockApi.moveBlock(client, parsed.id, parsed.previousID, parsed.parentID);
-                return createJsonResult(result);
+                return createWriteSuccessResult({
+                    id: parsed.id,
+                    ...(parsed.previousID ? { previousID: parsed.previousID } : {}),
+                    ...(parsed.parentID ? { parentID: parsed.parentID } : {}),
+                }, result);
             }
             case 'fold': {
                 const parsed = BlockFoldSchema.parse(rawArgs);

@@ -15,9 +15,10 @@
 
 ## 权限约定
 
-- `write`：允许读写
-- `readonly`：只允许读，禁止所有文档和块写操作
-- `none`：禁止所有读写
+- `rwd`：允许读、写、删除
+- `rw`：允许读写，不允许删除
+- `r`：只允许读，禁止所有文档和块写操作，也禁止删除
+- `none`：禁止所有读写删
 - `notebook(action="set_permission")` 修改权限后，后续 `notebook` / `document` / `block` 调用会立即按新权限生效
 - 如果让 AI 执行整套回归，建议先对 `notebook`、`document`、`block`、`file` 各做一次低风险调用，提前完成授权预热
 
@@ -253,10 +254,33 @@
 }
 ```
 
+`document(action="move")` 成功返回示例：
+
+```json
+{
+  "success": true,
+  "fromPaths": ["/20240318112233-a.sy"],
+  "toNotebook": "20210808180117-czj9bvb",
+  "toPath": "/20240318112233-parent.sy"
+}
+```
+
+`block(action="move")` 成功返回示例：
+
+```json
+{
+  "success": true,
+  "id": "20240318112233-abc123",
+  "previousID": "20240318112233-sibling",
+  "parentID": "20240318112233-parent"
+}
+```
+
 注意：
 
 - `rename`、`remove`、`move`、`get_hpath` 的 `path` / `fromPaths` / `toPath` 是存储路径
 - `get_path` 负责把 `id -> 存储路径`
+- path-based `move` 的 `toPath` 必须指向一个已存在的目标文档，不能传不存在的 `.sy` 路径，也不能传纯目录语义路径
 - `get_hpath` 和 `get_ids` 负责在人类可读层级路径与存储路径/ID 之间转换
 - `get_child_blocks` 和 `get_child_docs` 都要求传文档 ID，且只返回直属子项
 

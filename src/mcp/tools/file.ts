@@ -1,4 +1,6 @@
 import type { SiYuanClient } from '../../api/client';
+import fs from 'fs';
+import path from 'path';
 import * as fileApi from '../../api/file';
 import type { CategoryToolConfig, FileAction } from '../config';
 import { FILE_ACTION_HINTS, FILE_GUIDANCE } from '../help';
@@ -49,6 +51,7 @@ export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
         schema: createActionSchema('export_resources', {
             paths: { type: 'array', items: { type: 'string' }, description: 'Paths to export' },
             name: { type: 'string', description: 'Export file name' },
+            outputPath: { type: 'string', description: 'Optional local absolute or relative filesystem path to save the exported ZIP' },
         }, ['paths'], 'Export resources as a ZIP archive.'),
     },
 ];
@@ -64,6 +67,30 @@ export function listFileTools(config: CategoryToolConfig<FileAction>) {
             actionHints: FILE_ACTION_HINTS,
         },
     );
+}
+
+function normalizeResourcePath(input: string): string {
+    const trimmed = input.trim().replace(/\\/g, '/');
+    if (!trimmed) {
+        return '';
+    }
+
+    const withoutLeadingSlash = trimmed.replace(/^\/+/, '');
+    const workspaceRelative = withoutLeadingSlash.startsWith('data/')
+        ? withoutLeadingSlash
+        : withoutLeadingSlash.startsWith('assets/')
+            ? `data/${withoutLeadingSlash}`
+            : withoutLeadingSlash;
+    const withLeadingSlash = workspaceRelative.startsWith('/') ? workspaceRelative : `/${workspaceRelative}`;
+    return withLeadingSlash.replace(/\/{2,}/g, '/');
+}
+
+function normalizeResourcePaths(paths: string[]): string[] {
+    return [...new Set(paths.map(normalizeResourcePath).filter(Boolean))];
+}
+
+function resolveLocalOutputPath(outputPath: string): string {
+    return path.isAbsolute(outputPath) ? outputPath : path.resolve(process.cwd(), outputPath);
 }
 
 export async function callFileTool(
@@ -115,7 +142,30 @@ export async function callFileTool(
             }
             case 'export_resources': {
                 const parsed = FileExportResourcesSchema.parse(rawArgs);
-                const result = await fileApi.exportResources(client, parsed.paths, parsed.name);
+                const normalizedPaths = normalizeResourcePaths(parsed.paths);
+                if (normalizedPaths.length === 0) {
+                    throw new Error('export_resources requires at least one non-empty resource path.');
+                }
+
+                let result;
+                try {
+                    result = await fileApi.exportResources(client, normalizedPaths, parsed.name);
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    throw new Error(`Failed to export resources. original_paths=${JSON.stringify(parsed.paths)} normalized_paths=${JSON.stringify(normalizedPaths)} cause=${message}`);
+                }
+
+                if (parsed.outputPath) {
+                    const localOutputPath = resolveLocalOutputPath(parsed.outputPath);
+                    const binary = await client.readFileBinary(result.path);
+                    fs.mkdirSync(path.dirname(localOutputPath), { recursive: true });
+                    fs.writeFileSync(localOutputPath, binary);
+                    return createJsonResult({
+                        ...result,
+                        outputPath: localOutputPath,
+                        bytes: binary.byteLength,
+                    });
+                }
                 return createJsonResult(result);
             }
             default: {

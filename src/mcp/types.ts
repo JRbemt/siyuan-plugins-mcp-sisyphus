@@ -130,7 +130,7 @@ export const NotebookGetPermissionsSchema = z.object({
 export const NotebookSetPermissionSchema = z.object({
     action: z.literal("set_permission"),
     notebook: z.string().describe("Notebook ID"),
-    permission: z.enum(["none", "readonly", "write"]).describe('Permission level: "none" blocks all access, "readonly" allows reads only, "write" allows full access (default for new notebooks)'),
+    permission: z.enum(["none", "r", "rw", "rwd"]).describe('Permission level: "none" blocks all access, "r" allows read only, "rw" allows read and write without delete, "rwd" allows read, write, and delete (default for new notebooks)'),
 });
 
 export const NotebookGetChildDocsSchema = z.object({
@@ -362,6 +362,7 @@ export const FileExportResourcesSchema = z.object({
     action: z.literal("export_resources"),
     paths: z.array(z.string()).describe("Paths to export"),
     name: z.string().optional().describe("Export file name"),
+    outputPath: z.string().optional().describe("Optional local absolute or relative filesystem path to save the exported ZIP"),
 });
 
 export const SearchActionSchema = z.enum(SEARCH_ACTIONS);
@@ -392,12 +393,14 @@ export const SearchGetBacklinksSchema = z.object({
     action: z.literal("get_backlinks"),
     id: z.string().describe("Block or document ID to find backlinks for"),
     keyword: z.string().optional().describe("Filter backlinks by keyword"),
+    refTreeID: z.string().optional().describe("Optional document tree ID to narrow backlink scope"),
 });
 
 export const SearchGetBackmentionsSchema = z.object({
     action: z.literal("get_backmentions"),
     id: z.string().describe("Block or document ID to find backmentions for"),
     keyword: z.string().optional().describe("Filter backmentions by keyword"),
+    refTreeID: z.string().optional().describe("Optional document tree ID to narrow backmention scope"),
 });
 
 export const TagActionSchema = z.enum(TAG_ACTIONS);

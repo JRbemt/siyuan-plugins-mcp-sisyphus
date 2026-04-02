@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const { Client } = require('@modelcontextprotocol/sdk/client');
@@ -84,7 +85,7 @@ function makeSiYuanResponse(data, code = 0, msg = '') {
     });
 }
 
-function unwrapOperationBatch(value) {
+function unwrapWriteResult(value) {
     return Array.isArray(value) ? value[0] : value;
 }
 
@@ -166,19 +167,21 @@ async function assertDefaultToolList() {
         assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system']);
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
-        assert.match(descriptions.notebook, /list, create, open, close, rename, get_conf, set_conf, get_permissions, get_child_docs/);
-        assert.match(descriptions.notebook, /Enabled actions: list, create, open, close, rename, get_conf, set_conf, get_permissions, get_child_docs\./);
+        assert.match(descriptions.notebook, /list, create, open, close, rename, get_conf, set_conf, set_icon, get_permissions, get_child_docs/);
+        assert.match(descriptions.notebook, /Enabled actions: list, create, open, close, rename, get_conf, set_conf, set_icon, get_permissions, get_child_docs\./);
         assert.match(descriptions.notebook, /Required fields by action/);
         assert.match(descriptions.notebook, /Guidance:/);
-        assert.match(descriptions.document, /create, rename, move, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs/);
-        assert.match(descriptions.document, /Enabled actions: create, rename, move, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs\./);
+        assert.match(descriptions.document, /create, rename, move, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs, set_icon, list_tree, search_docs, get_doc, create_daily_note/);
+        assert.match(descriptions.document, /Enabled actions: create, rename, move, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs, set_icon, list_tree, search_docs, get_doc, create_daily_note\./);
         assert.match(descriptions.document, /rename: id, title \| notebook, path, title/);
         assert.match(descriptions.document, /human-readable target path/);
         assert.match(descriptions.document, /storage paths returned by document\(action="get_path"\)/);
         assert.match(descriptions.document, /move: Use either fromIDs \+ toID or fromPaths \+ toNotebook \+ toPath/);
-        assert.match(descriptions.block, /insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs/);
-        assert.match(descriptions.block, /Enabled actions: insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs\./);
+        assert.match(descriptions.document, /toPath must be the storage path of an existing destination document/);
+        assert.match(descriptions.block, /insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs, exists, info, breadcrumb, dom, recent_updated, word_count/);
+        assert.match(descriptions.block, /Enabled actions: insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs, exists, info, breadcrumb, dom, recent_updated, word_count\./);
         assert.match(descriptions.block, /foldable block ID/);
+        assert.match(descriptions.block, /structured success object/);
         assert.match(descriptions.file, /upload_asset, render_template, render_sprig, export_md, export_resources/);
         assert.match(descriptions.file, /base64-encoded file payload/);
         assert.match(descriptions.search, /fulltext, query_sql, search_tag, get_backlinks, get_backmentions/);
@@ -186,7 +189,7 @@ async function assertDefaultToolList() {
         assert.match(descriptions.search, /read-only/i);
         assert.match(descriptions.tag, /list, rename, remove/);
         assert.match(descriptions.tag, /#标签#/);
-        assert.doesNotMatch(descriptions.system, /Enabled actions: .*workspace_info/);
+        assert.doesNotMatch(descriptions.system, /Enabled actions: [^.]*workspace_info/);
         assert.match(descriptions.system, /Enabled actions: network, changelog, conf, sys_fonts, boot_progress, push_msg, push_err_msg, get_version, get_current_time\./);
         assert.match(descriptions.system, /workspace_info.*disabled by default|disabled by default.*workspace_info/i);
         assert.match(descriptions.system, /conf: .*mode="get".*keyPath/);
@@ -233,11 +236,13 @@ async function assertDefaultToolList() {
         const documentPathText = await readResourceText(client, 'siyuan://help/document-path-semantics');
         assert.match(documentPathText, /Human-readable path/);
         assert.match(documentPathText, /Storage path/);
+        assert.match(documentPathText, /existing destination document/);
 
         const actionHelpText = await readResourceText(client, 'siyuan://help/action/document/move');
         assert.match(actionHelpText, /document\(action="move"\)/);
         assert.match(actionHelpText, /fromIDs \+ toID/);
         assert.match(actionHelpText, /fromPaths \+ toNotebook \+ toPath/);
+        assert.match(actionHelpText, /existing destination document/);
 
         const validationError = (await callToolJson(client, 'document', {
             action: 'rename',
@@ -277,7 +282,7 @@ async function runLiveSmoke() {
             await callToolJson(client, 'notebook', {
                 action: 'set_permission',
                 notebook: notebookId,
-                permission: 'write',
+                permission: 'rwd',
             }).catch(() => {});
             for (const blockId of [...new Set(createdBlockIds)].reverse()) {
                 await callToolJson(client, 'block', { action: 'delete', id: blockId }).catch(() => {});
@@ -303,6 +308,13 @@ async function runLiveSmoke() {
                 template: 'codex-{{ now | date "2006" }}',
             });
             assert.match(renderSprig.json, /^codex-\d{4}$/);
+
+            const missingNotebookChildren = await callToolJson(client, 'notebook', {
+                action: 'get_child_docs',
+                notebook: 'missing-notebook-id',
+            });
+            assert.equal(missingNotebookChildren.json.error?.type, 'internal_error');
+            assert.match(missingNotebookChildren.json.error?.message, /does not exist/);
 
             const source = await callToolJson(client, 'document', {
                 action: 'create',
@@ -418,29 +430,32 @@ async function runLiveSmoke() {
             assert.equal(sourcePathAfterIdRename.path, sourcePath.path);
             assert.equal(sourceHPathAfterIdRename, '/SourceDoc ID Renamed');
 
-            const append = unwrapOperationBatch((await callToolJson(client, 'block', {
+            const append = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'append',
                 dataType: 'markdown',
                 data: '- doc append',
                 parentID: source.json.id,
             })).json);
-            const prepend = unwrapOperationBatch((await callToolJson(client, 'block', {
+            const prepend = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'prepend',
                 dataType: 'markdown',
                 data: '- doc prepend',
                 parentID: source.json.id,
             })).json);
-            const appendBlockId = append.doOperations[0].id;
-            const prependBlockId = prepend.doOperations[0].id;
+            const appendBlockId = append.id;
+            const prependBlockId = prepend.id;
+            assert.equal(append.success, true);
+            assert.equal(prepend.success, true);
             createdBlockIds.push(appendBlockId, prependBlockId);
 
-            const insert = unwrapOperationBatch((await callToolJson(client, 'block', {
+            const insert = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'insert',
                 dataType: 'markdown',
                 data: '- insert before append',
                 nextID: appendBlockId,
             })).json);
-            const insertBlockId = insert.doOperations[0].id;
+            const insertBlockId = insert.id;
+            assert.equal(insert.success, true);
             createdBlockIds.push(insertBlockId);
 
             const docChildren = (await callToolJson(client, 'block', {
@@ -458,19 +473,19 @@ async function runLiveSmoke() {
             assert.equal(docChildren[3].markdown, '- insert before append');
             assert.equal(docChildren[4].markdown, '- doc append');
 
-            const nestedAppend = unwrapOperationBatch((await callToolJson(client, 'block', {
+            const nestedAppend = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'append',
                 dataType: 'markdown',
                 data: '- child append',
                 parentID: appendBlockId,
             })).json);
-            const nestedPrepend = unwrapOperationBatch((await callToolJson(client, 'block', {
+            const nestedPrepend = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'prepend',
                 dataType: 'markdown',
                 data: '- child prepend',
                 parentID: appendBlockId,
             })).json);
-            createdBlockIds.push(nestedAppend.doOperations[0].id, nestedPrepend.doOperations[0].id);
+            createdBlockIds.push(nestedAppend.id, nestedPrepend.id);
 
             await callToolJson(client, 'block', {
                 action: 'update',
@@ -506,7 +521,12 @@ async function runLiveSmoke() {
                 previousID: appendBlockId,
                 parentID: source.json.id,
             })).json;
-            assert.equal(moveBlockResult, null);
+            assert.deepEqual(moveBlockResult, {
+                success: true,
+                id: insertBlockId,
+                previousID: appendBlockId,
+                parentID: source.json.id,
+            });
 
             const docChildrenAfterMove = (await callToolJson(client, 'block', {
                 action: 'get_children',
@@ -530,6 +550,39 @@ async function runLiveSmoke() {
             })).json;
             assert.equal(exportMd.hPath, '/SourceDoc ID Renamed');
             assert.match(exportMd.content, /- doc append updated/);
+
+            const uploadAsset = (await callToolJson(client, 'file', {
+                action: 'upload_asset',
+                assetsDirPath: '/assets/',
+                fileName: 'mcp-smoke-export.txt',
+                file: Buffer.from('mcp-smoke-export').toString('base64'),
+            })).json;
+            const uploadedAssetPath = Object.values(uploadAsset.succMap ?? {})[0];
+            assert.equal(typeof uploadedAssetPath, 'string');
+
+            const exportResourcesAbsolute = (await callToolJson(client, 'file', {
+                action: 'export_resources',
+                paths: [uploadedAssetPath],
+            })).json;
+            assert.equal(typeof exportResourcesAbsolute.path, 'string');
+
+            const exportResourcesRelative = (await callToolJson(client, 'file', {
+                action: 'export_resources',
+                paths: [String(uploadedAssetPath).replace(/^\//, '')],
+            })).json;
+            assert.equal(typeof exportResourcesRelative.path, 'string');
+
+            const localZipPath = path.join(process.cwd(), 'tmp', 'mcp-smoke-export.zip');
+            fs.rmSync(localZipPath, { force: true });
+            const exportResourcesLocal = (await callToolJson(client, 'file', {
+                action: 'export_resources',
+                paths: [uploadedAssetPath],
+                outputPath: localZipPath,
+            })).json;
+            assert.equal(exportResourcesLocal.outputPath, localZipPath);
+            assert.equal(typeof exportResourcesLocal.bytes, 'number');
+            assert.ok(fs.existsSync(localZipPath));
+            assert.ok(fs.statSync(localZipPath).size > 0);
 
             const pushMsg = (await callToolJson(client, 'system', {
                 action: 'push_msg',
@@ -624,9 +677,9 @@ async function runLiveSmoke() {
             const readonlyPerm = (await callToolJson(client, 'notebook', {
                 action: 'set_permission',
                 notebook: notebookId,
-                permission: 'readonly',
+                permission: 'r',
             })).json;
-            assert.deepEqual(readonlyPerm, { success: true, notebook: notebookId, permission: 'readonly' });
+            assert.deepEqual(readonlyPerm, { success: true, notebook: notebookId, permission: 'r' });
 
             await assertPermissionDenied(client, 'document', {
                 action: 'create',
@@ -678,7 +731,7 @@ async function runLiveSmoke() {
                 action: 'unfold',
                 id: appendBlockId,
             });
-            console.log('T20 PASS - readonly blocks all tested writes');
+            console.log('T20 PASS - r blocks all tested writes');
 
             const nonePerm = (await callToolJson(client, 'notebook', {
                 action: 'set_permission',
@@ -764,9 +817,9 @@ async function runLiveSmoke() {
             const writePerm = (await callToolJson(client, 'notebook', {
                 action: 'set_permission',
                 notebook: notebookId,
-                permission: 'write',
+                permission: 'rwd',
             })).json;
-            assert.deepEqual(writePerm, { success: true, notebook: notebookId, permission: 'write' });
+            assert.deepEqual(writePerm, { success: true, notebook: notebookId, permission: 'rwd' });
 
             const writeConf = (await callToolJson(client, 'notebook', {
                 action: 'get_conf',
@@ -788,13 +841,13 @@ async function runLiveSmoke() {
             assert.ok(Array.isArray(writeChildren));
             assert.ok(writeChildren.length > 0);
 
-            const writeRecovered = unwrapOperationBatch((await callToolJson(client, 'block', {
+            const writeRecovered = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'append',
                 dataType: 'markdown',
                 data: '- write restored',
                 parentID: source.json.id,
             })).json);
-            const writeRecoveredBlockId = writeRecovered.doOperations[0].id;
+            const writeRecoveredBlockId = writeRecovered.id;
             createdBlockIds.push(writeRecoveredBlockId);
 
             const writeCreatedDoc = (await callToolJson(client, 'document', {
@@ -812,7 +865,7 @@ async function runLiveSmoke() {
             })).json;
             assert.equal(writeCreatedDocPath.notebook, notebookId);
 
-            const writeUpdated = unwrapOperationBatch((await callToolJson(client, 'block', {
+            const writeUpdated = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'update',
                 dataType: 'markdown',
                 data: '- write restored updated',

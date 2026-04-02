@@ -53,9 +53,10 @@
 
 ### 笔记本权限模型
 
-- `write`：允许读写
-- `readonly`：只允许读
-- `none`：禁止读写
+- `rwd`：允许读写删
+- `rw`：允许读写，不允许删除
+- `r`：只允许读
+- `none`：禁止读写删
 
 ### 需要用户显式确认的高危 action
 
@@ -81,14 +82,14 @@
 | `create` | `POST /api/notebook/createNotebook` | `src/api/notebook.ts` | 支持额外传 `icon`，图标通过第二次调用设置 |
 | `open` | `POST /api/notebook/openNotebook` | `src/api/notebook.ts` | 需要笔记本读权限 |
 | `close` | `POST /api/notebook/closeNotebook` | `src/api/notebook.ts` | 需要笔记本读权限 |
-| `remove` | `POST /api/notebook/removeNotebook` | `src/api/notebook.ts` | 需要确认，且需要写权限 |
-| `rename` | `POST /api/notebook/renameNotebook` | `src/api/notebook.ts` | 需要写权限 |
+| `remove` | `POST /api/notebook/removeNotebook` | `src/api/notebook.ts` | 需要确认，且需要删除权限（`rwd`） |
+| `rename` | `POST /api/notebook/renameNotebook` | `src/api/notebook.ts` | 需要写权限（`rw` / `rwd`） |
 | `get_conf` | `POST /api/notebook/getNotebookConf` | `src/api/notebook.ts` | 需要读权限 |
-| `set_conf` | `POST /api/notebook/setNotebookConf` | `src/api/notebook.ts` | 需要写权限 |
-| `set_icon` | `POST /api/notebook/setNotebookIcon` | `src/api/notebook.ts` | 需要写权限 |
+| `set_conf` | `POST /api/notebook/setNotebookConf` | `src/api/notebook.ts` | 需要写权限（`rw` / `rwd`） |
+| `set_icon` | `POST /api/notebook/setNotebookIcon` | `src/api/notebook.ts` | 需要写权限（`rw` / `rwd`） |
 | `get_permissions` | 插件本地逻辑 | `src/mcp/tools/notebook.ts` | 读取插件维护的权限状态 |
 | `set_permission` | 插件本地逻辑 | `src/mcp/tools/notebook.ts` | 写入插件维护的权限状态 |
-| `get_child_docs` | `POST /api/filetree/listDocsByPath` | `src/api/document.ts` | 固定读取笔记本根目录 `/` |
+| `get_child_docs` | `POST /api/filetree/listDocsByPath` | `src/api/document.ts` | 固定读取笔记本根目录 `/`，并先校验笔记本存在性以返回更明确错误 |
 
 ## `document`
 
@@ -133,9 +134,9 @@
 
 | MCP action | 思源 HTTP API | Wrapper | 说明 |
 |---|---|---|---|
-| `insert` | `POST /api/block/insertBlock` | `src/api/block.ts` | 按位置插入 |
-| `prepend` | `POST /api/block/prependBlock` | `src/api/block.ts` | 在父块/文档头部插入 |
-| `append` | `POST /api/block/appendBlock` | `src/api/block.ts` | 在父块/文档尾部插入 |
+| `insert` | `POST /api/block/insertBlock` | `src/api/block.ts` | 按位置插入；MCP 层返回精简块结果 |
+| `prepend` | `POST /api/block/prependBlock` | `src/api/block.ts` | 在父块/文档头部插入；MCP 层返回精简块结果 |
+| `append` | `POST /api/block/appendBlock` | `src/api/block.ts` | 在父块/文档尾部插入；MCP 层返回精简块结果 |
 | `update` | `POST /api/block/updateBlock` | `src/api/block.ts` | 更新块内容 |
 | `delete` | `POST /api/block/deleteBlock` | `src/api/block.ts` | 需要确认 |
 | `move` | `POST /api/block/moveBlock` | `src/api/block.ts` | 需要确认 |
@@ -161,7 +162,7 @@
 | `render_template` | `POST /api/template/render` | `src/api/file.ts` | 需要可读文档 ID |
 | `render_sprig` | `POST /api/template/renderSprig` | `src/api/file.ts` | 仅模板渲染 |
 | `export_md` | `POST /api/export/exportMdContent` | `src/api/file.ts` | 需要可读文档 ID |
-| `export_resources` | `POST /api/export/exportResources` | `src/api/file.ts` | 返回 zip 路径 |
+| `export_resources` | `POST /api/export/exportResources` | `src/api/file.ts` | 将 `assets/...` 规范化为 `data/assets/...` 后导出；若传 `outputPath`，再把 ZIP 复制到本地文件系统（高危，需先确认） |
 | `push_msg` | `POST /api/notification/pushMsg` | `src/api/file.ts` / `src/mcp/tools/system.ts` | 普通通知 |
 | `push_err_msg` | `POST /api/notification/pushErrMsg` | `src/api/file.ts` / `src/mcp/tools/system.ts` | 错误通知 |
 | `get_version` | `POST /api/system/version` | `src/api/file.ts` / `src/mcp/tools/system.ts` | 只读 |
@@ -226,6 +227,12 @@
   - `toNotebook`
   - `toPath`
 
+说明：
+
+- `fromPaths` / `toPath` 都是存储路径
+- `toPath` 必须指向一个已存在的目标文档
+- 不支持把 `toPath` 写成不存在的 `.sy` 路径或纯目录路径
+
 #### `block(action="move")`
 
 - 必填：
@@ -234,6 +241,10 @@
   - `previousID`，或
   - `parentID`，或
   - 两者同时提供
+
+返回：
+
+- MCP 成功时返回结构化对象，不再透传底层思源 API 的 `null`
 
 ## 覆盖范围说明
 

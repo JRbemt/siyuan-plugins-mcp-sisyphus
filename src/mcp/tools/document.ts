@@ -175,7 +175,7 @@ export function listDocumentTools(config: CategoryToolConfig<DocumentAction>) {
             propertyDescriptionOverrides: {
                 path: 'Path value. For action="create", use a human-readable target path such as /Inbox/Weekly Note. For other document actions that use notebook + path, use a storage path returned by document(action="get_path").',
                 fromPaths: 'Source storage paths returned by document(action="get_path").',
-                toPath: 'Target storage path. Use the destination document or folder storage path returned by document(action="get_path").',
+                toPath: 'Target storage path. Use the storage path of an existing destination document returned by document(action="get_path").',
             },
         },
     );
@@ -231,7 +231,7 @@ export async function callDocumentTool(
             case 'remove': {
                 const parsed = DocumentRemoveSchema.parse(rawArgs);
                 if (parsed.id) {
-                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
                     if (denied) {
                         return denied;
                     }
@@ -239,7 +239,7 @@ export async function callDocumentTool(
                     return createJsonResult({ success: true, id: parsed.id });
                 }
                 if (parsed.notebook) {
-                    const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
+                    const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'delete');
                     if (denied) {
                         return denied;
                     }

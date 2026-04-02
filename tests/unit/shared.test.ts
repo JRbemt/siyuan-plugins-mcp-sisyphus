@@ -169,14 +169,14 @@ describe('createErrorResult', () => {
 
 describe('createPermissionDeniedResult', () => {
     it('should create permission denied result', () => {
-        const result = createPermissionDeniedResult('notebook123', 'readonly', 'write');
+        const result = createPermissionDeniedResult('notebook123', 'r', 'delete');
 
         expect(result.isError).toBe(true);
         const parsed = JSON.parse(result.content[0].text);
         expect(parsed.error.type).toBe('permission_denied');
         expect(parsed.error.notebook).toBe('notebook123');
-        expect(parsed.error.current_permission).toBe('readonly');
-        expect(parsed.error.required_permission).toBe('write');
+        expect(parsed.error.current_permission).toBe('r');
+        expect(parsed.error.required_permission).toBe('delete');
     });
 
     it('should include helpful message', () => {

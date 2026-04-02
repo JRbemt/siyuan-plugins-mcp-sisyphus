@@ -2,7 +2,7 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-A SiYuan Note MCP server plugin built around progressive disclosure — exposing seven aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`. Paired with a three-tier permission model (none / readonly / write) and mandatory confirmation gates on high-risk actions, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
+A SiYuan Note MCP server plugin built around progressive disclosure — exposing seven aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`) and mandatory confirmation gates on high-risk actions, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
 
 - `notebook`
 - `document`
@@ -25,14 +25,17 @@ Each tool uses a required `action` field instead of exposing dozens of endpoint-
 
 ## Permission Model
 
-- `write`: full read/write access
-- `readonly`: read access only; all document and block writes are rejected
-- `none`: no read or write access
+- `rwd`: full read/write/delete access
+- `rw`: read/write access, but delete actions are rejected
+- `r`: read access only; all write and delete actions are rejected
+- `none`: no read, write, or delete access
 - `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
 - For AI regression runs, preheat all 7 tools early so permission prompts do not interrupt the middle of a test
 
 ## Timeline
 
+- `v0.1.9`: Expands notebook permissions to `none` / `r` / `rw` / `rwd`, improves move/export behaviors, and strengthens MCP docs and test coverage
+- `v0.1.8`: Adds notebook and document emoji icon support and updates the aggregated MCP tool surface back to 7 tools
 - `v0.1.6`: Adds the `search` aggregated tool with full-text search, SQL queries, tag search, backlinks, and backmentions
 - `v0.1.5`: Shrinks MCP exposure to 4 aggregated tools and adds notebook-level permission guards with high-risk action confirmations
 - `v0.1.4`: Auto-generates the MCP config file on first install, so clients can connect out of the box
@@ -56,6 +59,11 @@ The server instructions require explicit user confirmation before these actions 
 If your client shows MCP instructions, the model should ask for confirmation before executing them.
 
 In the default fallback config, `document(action="move")` and `block(action="move")` are still exposed. They are not safe to call without confirmation just because they are enabled.
+
+Also note:
+
+- `document(action="move", fromPaths + toNotebook + toPath)` expects `toPath` to be the storage path of an existing destination document.
+- `block(action="move")` returns a structured success object from MCP, even though the underlying SiYuan API may return `null`.
 
 ## Installation
 
@@ -107,8 +115,8 @@ Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 | `get_conf` / `set_conf` | Get or set notebook configuration |
 | `set_icon` | Set notebook emoji icon |
 | `get_permissions` | List all notebook permission levels |
-| `set_permission` | Change notebook MCP permission (`write` / `readonly` / `none`) |
-| `get_child_docs` | Get direct child documents at notebook root |
+| `set_permission` | Change notebook MCP permission (`none` / `r` / `rw` / `rwd`) |
+| `get_child_docs` | Get direct child documents at notebook root with clearer notebook-state errors |
 
 ### `document`
 
@@ -135,7 +143,7 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 
 | Action | Description |
 |--------|-------------|
-| `insert` / `prepend` / `append` | Insert a block at position, start, or end |
+| `insert` / `prepend` / `append` | Insert a block at position, start, or end and return a slim success payload |
 | `update` | Update block content |
 | `delete` | Delete a block |
 | `move` | Move a block to a new position |
@@ -159,7 +167,7 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 | `render_template` | Render a template with document context |
 | `render_sprig` | Render a Sprig template |
 | `export_md` | Export document as Markdown |
-| `export_resources` | Export resources as ZIP |
+| `export_resources` | Export resources as ZIP, accepting `assets/...`, normalizing to `data/assets/...`, and optionally copying to local `outputPath` (requires confirmation when writing locally) |
 
 ### `system`
 

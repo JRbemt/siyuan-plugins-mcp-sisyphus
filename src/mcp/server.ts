@@ -28,8 +28,13 @@ Before calling any of the following actions, you MUST clearly describe the actio
 - document(action="remove"), document(action="move")
 - block(action="delete"), block(action="move")
 - tag(action="remove")
+- file(action="export_resources", outputPath=...)
 
 Flow: State "I will do X. Proceed?" and only call the tool after the user explicitly agrees.
+
+Additional rule:
+- file(action="export_resources") without outputPath only asks SiYuan to generate a ZIP in its managed temp area.
+- file(action="export_resources", outputPath=...) writes a file to the local filesystem and MUST be treated as high-risk even though the action itself is otherwise read-oriented.
 
 Path semantics:
 - document(action="create") uses a human-readable target path such as /Inbox/Weekly Note.

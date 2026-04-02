@@ -209,7 +209,7 @@ describe('MCP End-to-End Flow', () => {
             // readFile returns text, not JSON
             mockFetch.mockResolvedValue({
                 ok: true,
-                text: async () => JSON.stringify({ nb1: 'readonly' }),
+                text: async () => JSON.stringify({ nb1: 'r' }),
             } as Response);
 
             const permMgr = new PermissionManager(client);
@@ -235,7 +235,7 @@ describe('MCP End-to-End Flow', () => {
         it('should allow full access for write permission', async () => {
             mockFetch.mockResolvedValue({
                 ok: true,
-                text: async () => JSON.stringify({ nb1: 'write' }),
+                text: async () => JSON.stringify({ nb1: 'rwd' }),
             } as Response);
 
             const permMgr = new PermissionManager(client);
@@ -243,6 +243,21 @@ describe('MCP End-to-End Flow', () => {
 
             expect(permMgr.canRead('nb1')).toBe(true);
             expect(permMgr.canWrite('nb1')).toBe(true);
+            expect(permMgr.canDelete('nb1')).toBe(true);
+        });
+
+        it('should allow write but deny delete for rw permission', async () => {
+            mockFetch.mockResolvedValue({
+                ok: true,
+                text: async () => JSON.stringify({ nb1: 'rw' }),
+            } as Response);
+
+            const permMgr = new PermissionManager(client);
+            await permMgr.load();
+
+            expect(permMgr.canRead('nb1')).toBe(true);
+            expect(permMgr.canWrite('nb1')).toBe(true);
+            expect(permMgr.canDelete('nb1')).toBe(false);
         });
     });
 

@@ -13,7 +13,7 @@ import {
 export const NOTEBOOK_GUIDANCE: string[] = [
     'Use notebook IDs for open, close, rename, get_conf, and set_conf.',
     'notebook(action="remove") requires explicit user confirmation before execution.',
-    'notebook(action="get_child_docs") returns direct child documents at the notebook root.',
+    'notebook(action="get_child_docs") returns direct child documents at the notebook root and reports clearer notebook-state errors.',
 ];
 
 export const DOCUMENT_GUIDANCE: string[] = [
@@ -34,7 +34,8 @@ export const BLOCK_GUIDANCE: string[] = [
 
 export const FILE_GUIDANCE: string[] = [
     'file(action="upload_asset") expects a base64-encoded file payload.',
-    'file(action="export_resources") exports the given paths as a ZIP archive.',
+    'file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.',
+    'file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.',
 ];
 
 export const TAG_GUIDANCE: string[] = [
@@ -54,14 +55,14 @@ export const SYSTEM_GUIDANCE: string[] = [
 export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
     remove: 'This action requires explicit user confirmation.',
     set_icon: 'Use a notebook ID + icon (e.g., "1f4d4" for 📔).',
-    get_child_docs: 'Use a notebook ID. Returns direct child documents at the notebook root.',
+    get_child_docs: 'Use a notebook ID. Returns direct child documents at the notebook root and distinguishes notebook-not-found / closed-or-initializing failures.',
 };
 
 export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     create: 'Use notebook + path + markdown, where path is human-readable.',
     rename: 'Use either id + title or notebook + path + title.',
     remove: 'Use either id or notebook + path. This action requires explicit user confirmation.',
-    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. This action requires explicit user confirmation.',
+    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.',
     get_hpath: 'Use either id or notebook + path.',
     get_ids: 'Use notebook + path, where path is human-readable (same format as action="create").',
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
@@ -74,12 +75,12 @@ export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
 };
 
 export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
-    insert: 'nextID inserts BEFORE that block; previousID inserts AFTER that block. Provide at least one of nextID, previousID, or parentID. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
-    prepend: 'parentID can be either a document ID or block ID; behavior differs. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
-    append: 'parentID can be either a document ID or block ID; behavior differs. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
+    insert: 'nextID inserts BEFORE that block; previousID inserts AFTER that block. Provide at least one of nextID, previousID, or parentID. Returns a slim success object with the created block ID. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
+    prepend: 'parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
+    append: 'parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
     update: 'Use dataType + data + id to replace block content. If the content should create tags, write them as #标签#.',
     delete: 'This action requires explicit user confirmation.',
-    move: 'Provide id plus previousID, parentID, or both to describe the destination. This action requires explicit user confirmation.',
+    move: 'Provide id plus previousID, parentID, or both to describe the destination. On success, MCP returns a structured success object instead of SiYuan\'s raw null. This action requires explicit user confirmation.',
     fold: 'Use a foldable block ID.',
     unfold: 'Use a foldable block ID.',
     get_children: 'Accepts both document IDs and block IDs. Returns direct child blocks.',
@@ -93,7 +94,7 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
     upload_asset: 'Use assetsDirPath + file + fileName, where file is base64-encoded.',
-    export_resources: 'Provide one or more existing resource paths; the result is a ZIP export.',
+    export_resources: 'Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation.',
 };
 
 export const SEARCH_GUIDANCE: string[] = [

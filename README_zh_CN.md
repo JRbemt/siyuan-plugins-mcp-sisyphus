@@ -2,7 +2,7 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`file`、`search`、`tag`、`system` 七个聚合工具。配合「禁止读写 / 只读 / 读写」三级权限模型与高危操作二次确认机制，在简化 AI 调用路径的同时，为你的笔记数据筑起一道安全防线——让自动化更可靠，让权限管理更细腻。
+这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`file`、`search`、`tag`、`system` 七个聚合工具。配合 `none / r / rw / rwd` 四态权限模型与高危操作二次确认机制，在简化 AI 调用路径的同时，为你的笔记数据筑起一道安全防线——让自动化更可靠，让权限管理更细腻。
 
 - `notebook`
 - `document`
@@ -25,14 +25,17 @@
 
 ## 权限模型
 
-- `write`：允许读写
-- `readonly`：只允许读，所有文档/块写操作都应被拒绝
-- `none`：禁止所有读写
+- `rwd`：允许读、写、删除
+- `rw`：允许读写，不允许删除
+- `r`：只允许读，所有写和删除操作都应被拒绝
+- `none`：禁止所有读、写、删除
 - `notebook(action="set_permission")` 设置后，会立即影响后续的 `notebook`、`document`、`block` 调用
 - AI 做回归时，建议一开始先把 7 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
 
 ## 版本时间线
 
+- `v0.1.9`：升级笔记本权限模型为 `none` / `r` / `rw` / `rwd`，增强 move/export 行为，并补齐 MCP 文档与测试覆盖
+- `v0.1.8`：新增笔记本与文档 emoji 图标支持，并将对外 MCP 聚合工具面恢复为 7 个 tool
 - `v0.1.6`：新增 `search` 聚合 tool，支持全文搜索、SQL 查询、标签搜索、反向链接与反向提及
 - `v0.1.5`：对外 MCP 工具面收敛为 4 个聚合 tool，并新增笔记本级权限守卫与高危 action 确认约束
 - `v0.1.4`：首次安装插件时自动生成 MCP 配置文件，开箱即可连接客户端
@@ -56,6 +59,11 @@
 如果你的 MCP 客户端会展示 instructions，模型应先征得确认再执行。
 
 默认 fallback 配置里，`document(action="move")` 和 `block(action="move")` 依然会出现在工具列表里。它们被启用并不代表可以跳过确认。
+
+另外注意：
+
+- `document(action="move", fromPaths + toNotebook + toPath)` 的 `toPath` 必须是一个已存在目标文档的存储路径。
+- `block(action="move")` 在 MCP 层会返回结构化成功结果，即使底层思源 API 可能返回 `null`。
 
 ## 安装
 
@@ -107,8 +115,8 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `get_conf` / `set_conf` | 获取或设置笔记本配置 |
 | `set_icon` | 设置笔记本 emoji 图标 |
 | `get_permissions` | 查看所有笔记本的 MCP 权限 |
-| `set_permission` | 修改笔记本权限（`write` / `readonly` / `none`） |
-| `get_child_docs` | 获取笔记本根目录下的直属子文档 |
+| `set_permission` | 修改笔记本权限（`none` / `r` / `rw` / `rwd`） |
+| `get_child_docs` | 获取笔记本根目录下的直属子文档，并返回更明确的笔记本状态错误 |
 
 ### `document`
 
@@ -135,7 +143,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 
 | Action | 说明 |
 |--------|------|
-| `insert` / `prepend` / `append` | 插入块到指定位置/开头/末尾 |
+| `insert` / `prepend` / `append` | 插入块到指定位置/开头/末尾，并返回精简成功结果 |
 | `update` | 更新块内容 |
 | `delete` | 删除块 |
 | `move` | 移动块到新位置 |
@@ -159,7 +167,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `render_template` | 使用文档上下文渲染模板 |
 | `render_sprig` | 渲染 Sprig 模板 |
 | `export_md` | 导出文档为 Markdown |
-| `export_resources` | 导出资源为 ZIP 压缩包 |
+| `export_resources` | 导出资源为 ZIP 压缩包，兼容 `assets/...` 自动规范化到 `data/assets/...`，并可额外写到本地 `outputPath`（写本地时需用户确认） |
 
 ### `system`
 

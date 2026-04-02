@@ -27,7 +27,7 @@ describe('PermissionManager', () => {
 
     describe('load', () => {
         it('should load permissions from API', async () => {
-            const permissions = { notebook1: 'write', notebook2: 'readonly' };
+            const permissions = { notebook1: 'rwd', notebook2: 'r' };
             vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify(permissions));
 
             await manager.load();
@@ -48,8 +48,36 @@ describe('PermissionManager', () => {
             expect(manager.getAll()).toEqual({});
         });
 
+        it('should migrate legacy persisted permissions', async () => {
+            vi.mocked(mockClient.writeFile).mockResolvedValue();
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ notebook1: 'write', notebook2: 'readonly', notebook3: 'rwd' }));
+
+            await manager.load();
+
+            expect(manager.get('notebook1')).toBe('rw');
+            expect(manager.get('notebook2')).toBe('r');
+            expect(manager.get('notebook3')).toBe('rwd');
+            expect(mockClient.writeFile).toHaveBeenCalledWith(
+                '/data/storage/petal/siyuan-plugins-mcp-sisyphus/notebookPermissions',
+                JSON.stringify({ notebook1: 'rw', notebook2: 'r', notebook3: 'rwd' }, null, 2),
+            );
+        });
+
+        it('should still downgrade unknown persisted permissions to none', async () => {
+            vi.mocked(mockClient.writeFile).mockResolvedValue();
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ notebook1: 'admin' }));
+
+            await manager.load();
+
+            expect(manager.get('notebook1')).toBe('none');
+            expect(mockClient.writeFile).toHaveBeenCalledWith(
+                '/data/storage/petal/siyuan-plugins-mcp-sisyphus/notebookPermissions',
+                JSON.stringify({ notebook1: 'none' }, null, 2),
+            );
+        });
+
         it('should skip loading if already loaded', async () => {
-            const permissions = { notebook1: 'write' };
+            const permissions = { notebook1: 'rwd' };
             vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify(permissions));
 
             await manager.load();
@@ -61,8 +89,8 @@ describe('PermissionManager', () => {
 
     describe('reload', () => {
         it('should force reload permissions', async () => {
-            const permissions1 = { notebook1: 'write' };
-            const permissions2 = { notebook1: 'readonly' };
+            const permissions1 = { notebook1: 'rwd' };
+            const permissions2 = { notebook1: 'r' };
 
             vi.mocked(mockClient.readFile)
                 .mockResolvedValueOnce(JSON.stringify(permissions1))
@@ -72,23 +100,23 @@ describe('PermissionManager', () => {
             await manager.reload();
 
             expect(mockClient.readFile).toHaveBeenCalledTimes(2);
-            expect(manager.get('notebook1')).toBe('readonly');
+            expect(manager.get('notebook1')).toBe('r');
         });
     });
 
     describe('get', () => {
         it('should return permission for existing notebook', async () => {
-            const permissions = { nb1: 'write', nb2: 'readonly' };
+            const permissions = { nb1: 'rwd', nb2: 'r' };
             vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify(permissions));
 
             await manager.load();
-            expect(manager.get('nb1')).toBe('write');
-            expect(manager.get('nb2')).toBe('readonly');
+            expect(manager.get('nb1')).toBe('rwd');
+            expect(manager.get('nb2')).toBe('r');
         });
 
-        it('should default to write for unknown notebook', async () => {
+        it('should default to rwd for unknown notebook', async () => {
             await manager.load();
-            expect(manager.get('unknown')).toBe('write');
+            expect(manager.get('unknown')).toBe('rwd');
         });
     });
 
@@ -98,10 +126,10 @@ describe('PermissionManager', () => {
             vi.mocked(mockClient.writeFile).mockResolvedValue();
 
             await manager.load();
-            await manager.set('notebook1', 'readonly');
+            await manager.set('notebook1', 'r');
 
             expect(mockClient.writeFile).toHaveBeenCalled();
-            expect(manager.get('notebook1')).toBe('readonly');
+            expect(manager.get('notebook1')).toBe('r');
         });
 
         it('should handle all permission levels', async () => {
@@ -110,7 +138,7 @@ describe('PermissionManager', () => {
 
             await manager.load();
 
-            const levels: NotebookPermission[] = ['none', 'readonly', 'write'];
+            const levels: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
             for (const level of levels) {
                 await manager.set(`nb-${level}`, level);
                 expect(manager.get(`nb-${level}`)).toBe(level);
@@ -119,14 +147,20 @@ describe('PermissionManager', () => {
     });
 
     describe('canRead', () => {
-        it('should return true for write permission', async () => {
-            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'write' }));
+        it('should return true for rwd permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'rwd' }));
             await manager.load();
             expect(manager.canRead('nb')).toBe(true);
         });
 
-        it('should return true for readonly permission', async () => {
-            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'readonly' }));
+        it('should return true for r permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'r' }));
+            await manager.load();
+            expect(manager.canRead('nb')).toBe(true);
+        });
+
+        it('should return true for rw permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'rw' }));
             await manager.load();
             expect(manager.canRead('nb')).toBe(true);
         });
@@ -137,21 +171,27 @@ describe('PermissionManager', () => {
             expect(manager.canRead('nb')).toBe(false);
         });
 
-        it('should return true for unknown notebook (defaults to write)', async () => {
+        it('should return true for unknown notebook (defaults to rwd)', async () => {
             await manager.load();
             expect(manager.canRead('unknown')).toBe(true);
         });
     });
 
     describe('canWrite', () => {
-        it('should return true for write permission', async () => {
-            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'write' }));
+        it('should return true for rw permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'rw' }));
             await manager.load();
             expect(manager.canWrite('nb')).toBe(true);
         });
 
-        it('should return false for readonly permission', async () => {
-            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'readonly' }));
+        it('should return true for rwd permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'rwd' }));
+            await manager.load();
+            expect(manager.canWrite('nb')).toBe(true);
+        });
+
+        it('should return false for r permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'r' }));
             await manager.load();
             expect(manager.canWrite('nb')).toBe(false);
         });
@@ -162,15 +202,46 @@ describe('PermissionManager', () => {
             expect(manager.canWrite('nb')).toBe(false);
         });
 
-        it('should return true for unknown notebook (defaults to write)', async () => {
+        it('should return true for unknown notebook (defaults to rwd)', async () => {
             await manager.load();
             expect(manager.canWrite('unknown')).toBe(true);
         });
     });
 
+    describe('canDelete', () => {
+        it('should return true for rwd permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'rwd' }));
+            await manager.load();
+            expect(manager.canDelete('nb')).toBe(true);
+        });
+
+        it('should return false for rw permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'rw' }));
+            await manager.load();
+            expect(manager.canDelete('nb')).toBe(false);
+        });
+
+        it('should return false for r permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'r' }));
+            await manager.load();
+            expect(manager.canDelete('nb')).toBe(false);
+        });
+
+        it('should return false for none permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ nb: 'none' }));
+            await manager.load();
+            expect(manager.canDelete('nb')).toBe(false);
+        });
+
+        it('should return true for unknown notebook (defaults to rwd)', async () => {
+            await manager.load();
+            expect(manager.canDelete('unknown')).toBe(true);
+        });
+    });
+
     describe('getAll', () => {
         it('should return copy of all permissions', async () => {
-            const permissions = { nb1: 'write', nb2: 'readonly' };
+            const permissions = { nb1: 'rwd', nb2: 'r' };
             vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify(permissions));
 
             await manager.load();
@@ -179,7 +250,7 @@ describe('PermissionManager', () => {
             expect(all).toEqual(permissions);
             // Verify it's a copy
             all.nb1 = 'none';
-            expect(manager.get('nb1')).toBe('write');
+            expect(manager.get('nb1')).toBe('rwd');
         });
     });
 });

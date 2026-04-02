@@ -1,6 +1,9 @@
 # SiYuan MCP 接口 AI 测试手册
 
 这是一份**给 AI 执行**的接口测试手册。  
+
+请调用 siyuan-mcp-sisyphus 进行测试。
+
 目标是让 AI 在尽量少猜测的前提下，对当前 MCP 暴露的 `notebook` / `document` / `block` / `file` / `search` / `tag` / `system` 七类工具进行**系统化回归测试**，重点覆盖：
 
 - 聚合工具是否正确暴露
@@ -328,6 +331,12 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
   - `id`
   - `name`
   - `permission`
+- `permission` 必须是以下四种之一：
+  - `none`
+  - `r`
+  - `rw`
+  - `rwd`
+- 若返回旧三态值 `readonly` / `write`，判定为 `FAIL`
 
 ---
 
@@ -913,11 +922,15 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T20 - readonly 权限下禁止写
+### T20 - `r` 权限下允许读、禁止写删
 
 #### 目标
 
-验证测试笔记本设为 `readonly` 后，写操作会被拦截。
+验证测试笔记本设为 `r` 后：
+
+- 读操作允许
+- 写操作被拦截
+- 删除操作被拦截
 
 #### 步骤
 
@@ -927,55 +940,11 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 {
   "action": "set_permission",
   "notebook": "<testNotebookId>",
-  "permission": "readonly"
+  "permission": "r"
 }
 ```
 
-随后分别尝试以下写操作（都只针对测试对象）：
-
-1. `document.create`
-2. `document.rename(id=sourceDocId, ...)`
-3. `document.remove(id=deleteDocId)`
-4. `document.move(fromIDs=[pathMoveDocId], toID=targetDocId)`
-5. `block.append(parentID=sourceDocId, ...)`
-6. `block.update(id=appendBlockId, ...)`
-7. `block.delete(id=appendBlockId)`
-8. `block.move(id=insertBlockId, ...)`
-9. `block.fold(id=appendBlockId)`
-10. `block.unfold(id=appendBlockId)`
-
-#### 预期
-
-这些操作都应失败，并返回结构：
-
-```json
-{
-  "error": {
-    "type": "permission_denied",
-    "notebook": "<testNotebookId>",
-    "current_permission": "readonly",
-    "required_permission": "write"
-  }
-}
-```
-
-允许 `message` 文本有细微差异，但以下字段必须符合：
-
-- `type = permission_denied`
-- `current_permission = readonly`
-- `required_permission = write`
-
----
-
-### T21 - readonly 权限下允许读
-
-#### 目标
-
-验证 `readonly` 不会错误拦截读操作。
-
-#### 步骤
-
-在 `readonly` 状态下尝试以下操作：
+先尝试以下允许的读操作：
 
 1. `notebook.get_conf`
 2. `notebook.get_child_docs`
@@ -987,13 +956,132 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 8. `block.get_kramdown(id=sourceDocId)`
 9. `block.get_attrs(id=appendBlockId)`
 
+随后分别尝试以下应被拒绝的写操作（都只针对测试对象）：
+
+10. `document.create`
+11. `document.rename(id=sourceDocId, ...)`
+12. `document.move(fromIDs=[pathMoveDocId], toID=targetDocId)`
+13. `block.append(parentID=sourceDocId, ...)`
+14. `block.update(id=appendBlockId, ...)`
+15. `block.move(id=insertBlockId, ...)`
+16. `block.fold(id=appendBlockId)`
+17. `block.unfold(id=appendBlockId)`
+
+然后分别尝试以下删除操作：
+
+18. `document.remove(id=deleteDocId)`
+19. `block.delete(id=appendBlockId)`
+20. `notebook.remove(notebook=testNotebookId)`  
+    说明：如果要避免影响主测试流程，这一项可以放到最后单独执行，或仅验证返回的权限错误而不要真的删除测试笔记本。
+
 #### 预期
 
-以上调用都应成功。
+- 上述读操作都应成功
+- 上述写操作都应失败，并返回结构：
+
+```json
+{
+  "error": {
+    "type": "permission_denied",
+    "notebook": "<testNotebookId>",
+    "current_permission": "r",
+    "required_permission": "write"
+  }
+}
+```
+
+允许 `message` 文本有细微差异，但以下字段必须符合：
+
+- `type = permission_denied`
+- `current_permission = r`
+- `required_permission = write`
+
+上述删除操作也都应失败，但字段应为：
+
+- `type = permission_denied`
+- `current_permission = r`
+- `required_permission = delete`
 
 ---
 
-### T22 - none 权限下禁止读写
+### T21 - `rw` 权限下允许读写、禁止删除
+
+#### 目标
+
+验证测试笔记本设为 `rw` 后：
+
+- 读操作允许
+- 普通写操作允许
+- 删除操作被拦截
+
+#### 步骤
+
+先设置：
+
+```json
+{
+  "action": "set_permission",
+  "notebook": "<testNotebookId>",
+  "permission": "rw"
+}
+```
+
+然后尝试以下允许的读操作：
+
+1. `notebook.get_conf`
+2. `notebook.get_child_docs`
+3. `document.get_path(id=sourceDocId)`
+4. `document.get_hpath(id=sourceDocId)`
+5. `document.get_child_docs(id=targetDocId)`
+6. `document.get_child_blocks(id=sourceDocId)`
+7. `block.get_children(id=sourceDocId)`
+8. `block.get_kramdown(id=sourceDocId)`
+9. `block.get_attrs(id=appendBlockId)`
+
+再尝试以下允许的普通写操作：
+
+10. `document.create`
+11. `document.rename(id=sourceDocId, ...)`
+12. `document.move(fromIDs=[pathMoveDocId], toID=targetDocId)`
+13. `block.append(parentID=sourceDocId, ...)`
+14. `block.update(id=appendBlockId, ...)`
+15. `block.move(id=insertBlockId, ...)`
+16. `block.fold(id=appendBlockId)`
+17. `block.unfold(id=appendBlockId)`
+
+最后尝试以下应被拒绝的删除操作：
+
+18. `document.remove(id=deleteDocId)`
+19. `block.delete(id=appendBlockId)`
+20. `notebook.remove(notebook=testNotebookId)`  
+    说明：同样建议放到最后或只验证权限错误返回，不要破坏后续流程。
+
+#### 预期
+
+- 上述读操作都应成功
+- 上述普通写操作都应成功
+- 上述删除操作都应失败，并返回：
+
+```json
+{
+  "error": {
+    "type": "permission_denied",
+    "notebook": "<testNotebookId>",
+    "current_permission": "rw",
+    "required_permission": "delete"
+  }
+}
+```
+
+关键字段要求：
+
+- `type = permission_denied`
+- `current_permission = rw`
+- `required_permission = delete`
+
+---
+
+### T22 - `none` 权限下禁止读写删
 
 #### 目标
 
@@ -1033,6 +1121,10 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 15. `block.update(id=appendBlockId, ...)`
 16. `block.delete(id=appendBlockId)`
 
+如条件允许，再补充：
+
+17. `notebook.remove(notebook=testNotebookId)`，应返回删除权限不足
+
 #### 预期
 
 上述读操作都应失败，并返回：
@@ -1053,13 +1145,22 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `current_permission = none`
 - `required_permission = write`
 
+上述删除操作也都应失败，并且返回：
+
+- `current_permission = none`
+- `required_permission = delete`
+
 ---
 
-### T23 - 恢复权限
+### T23 - `rwd` 权限下允许读写删
 
 #### 目标
 
-恢复环境，并验证 `write`（full access）下读写能力都恢复正常。
+验证测试笔记本设为 `rwd` 后：
+
+- 读操作允许
+- 写操作允许
+- 删除操作允许
 
 #### 步骤
 
@@ -1069,11 +1170,11 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 {
   "action": "set_permission",
   "notebook": "<testNotebookId>",
-  "permission": "write"
+  "permission": "rwd"
 }
 ```
 
-随后至少执行一组读操作和一组写操作验证恢复成功，例如：
+随后至少执行一组读操作、一组写操作和一组删除操作验证恢复成功，例如：
 
 读操作示例：
 
@@ -1102,12 +1203,45 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
+删除操作示例：
+
+```json
+{
+  "action": "delete",
+  "id": "<tempBlockId>"
+}
+```
+
 #### 预期
 
 - 设置成功
 - 读操作成功，返回正常数据
 - 追加成功
-- 如继续执行 `document.create` / `document.rename` / `block.update` / `block.delete`，也应恢复成功
+- 删除成功
+- 如继续执行 `document.create` / `document.rename` / `document.remove` / `block.update` / `block.delete`，也应恢复成功
+
+---
+
+### T24 - 权限状态切换与恢复复核
+
+#### 目标
+
+验证权限状态在 `r -> rw -> none -> rwd` 的切换过程中立即生效，且恢复后不会残留上一状态的拦截行为。
+
+#### 步骤
+
+按顺序执行：
+
+1. 设置为 `r`，验证一条读成功、一条写失败、一条删失败
+2. 设置为 `rw`，验证一条读成功、一条写成功、一条删失败
+3. 设置为 `none`，验证一条读失败、一条写失败、一条删失败
+4. 设置为 `rwd`，验证一条读成功、一条写成功、一条删成功
+
+#### 预期
+
+- 每次 `set_permission` 之后，新权限立即生效
+- 不需要重启插件或重新创建对象
+- 恢复到 `rwd` 后，不再残留任何来自 `r` / `rw` / `none` 的错误拦截
 
 ---
 
@@ -1115,7 +1249,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T24 - 全文搜索
+### T25 - 全文搜索
 
 #### 目标
 
@@ -1140,7 +1274,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T25 - SQL 查询
+### T26 - SQL 查询
 
 #### 目标
 
@@ -1173,7 +1307,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T26 - 标签搜索
+### T27 - 标签搜索
 
 #### 目标
 
@@ -1197,7 +1331,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T27 - 反向链接与反向提及
+### T28 - 反向链接与反向提及
 
 #### 目标
 
@@ -1236,7 +1370,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 以下用例用于补齐当前手册中尚未覆盖的 tool / action。  
 如果前面某一步已经自然覆盖了某个 action，仍需在此处明确记录“已覆盖”并给出引用步骤号。
 
-### T28 - notebook 补充动作
+### T29 - notebook 补充动作
 
 #### 目标
 
@@ -1256,7 +1390,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - 笔记本始终可正常读取
 - `remove` 已在清理阶段覆盖，最终报告中需明确写明清理是否成功
 
-### T29 - document 补充动作
+### T30 - document 补充动作
 
 #### 目标
 
@@ -1278,7 +1412,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `get_doc` 返回文档内容与元数据
 - `create_daily_note` 返回日记文档；若当天已存在则返回已有文档
 
-### T30 - block 补充读接口
+### T31 - block 补充读接口
 
 #### 目标
 
@@ -1302,7 +1436,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `recent_updated` 返回最近更新块列表，且应能看到测试块或测试文档相关块
 - `word_count` 返回统计结果，且总数大于 `0`
 
-### T31 - block 引用转移
+### T32 - block 引用转移
 
 #### 目标
 
@@ -1330,7 +1464,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - 原先引用 `refTargetBlockId` 的位置被转移到 `refTargetBlockId2`
 - 若工具返回受影响块列表，应记录下来
 
-### T32 - file 全量覆盖
+### T33 - file 全量覆盖
 
 #### 目标
 
@@ -1364,7 +1498,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `export_md` 成功返回 Markdown
 - `export_resources` 成功返回 ZIP 导出结果
 
-### T33 - search 全量覆盖补强
+### T34 - search 全量覆盖补强
 
 #### 目标
 
@@ -1386,7 +1520,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `get_backlinks` 能返回转移后的引用结果
 - `get_backmentions` 成功返回，即使为空数组也算通过
 
-### T34 - tag 全量覆盖
+### T35 - tag 全量覆盖
 
 #### 目标
 
@@ -1406,7 +1540,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `rename` 成功，原标签被替换
 - `remove` 成功，标签不再出现
 
-### T35 - system 全量覆盖
+### T36 - system 全量覆盖
 
 #### 目标
 
@@ -1435,7 +1569,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `sys_fonts` 返回字体列表
 - `push_msg` / `push_err_msg` 返回成功，且不会中断后续测试
 
-### T36 - 权限覆盖矩阵复核
+### T37 - 权限覆盖矩阵复核
 
 #### 目标
 
@@ -1463,7 +1597,7 @@ AI 必须清理自己创建的数据。
 
 ### 建议清理顺序
 
-1. 如果权限不是 `write`，先恢复为 `write`
+1. 如果权限不是 `rwd`，先恢复为 `rwd`
 2. 删除测试过程中新增的块（如有必要）
 3. 删除测试文档
 4. 删除测试笔记本
@@ -1515,19 +1649,27 @@ AI 完成测试后，必须输出如下结构的报告。
 1. `notebook.get_child_docs` 是否只返回直属子文档？
 2. `document.get_child_docs` 是否只返回直属子文档？
 3. `document.get_child_blocks` 是否与 `block.get_children(docId)` 一致？
-4. `readonly` 下写操作是否被拦截？
-5. `none` 下读操作是否被拦截？
-6. `none` 下写操作是否被拦截？
-7. `write` 下读操作是否恢复正常？
-8. `write` 下写操作是否恢复正常？
-9. `document.get_path` 是否已受读权限保护？
-10. `block` 工具是否已不再通过”把块 ID 当文档 ID”导致权限漏检？
-11. `search.fulltext` 是否能正常搜索内容？
-12. `search.query_sql` 是否拒绝非 SELECT 语句？
-13. `search.get_backlinks` / `search.get_backmentions` 是否正常返回？
-14. `tag.list` / `tag.rename` / `tag.remove` 是否正常？
-15. `system` 工具全部 action 是否可正常返回？
-16. `file.upload_asset` / `file.render_template` / `file.export_resources` 是否正常？
+4. `r` 下读操作是否允许？
+5. `r` 下写操作是否被拦截？
+6. `r` 下删除操作是否被拦截？
+7. `rw` 下读操作是否允许？
+8. `rw` 下普通写操作是否允许？
+9. `rw` 下删除操作是否被拦截？
+10. `none` 下读操作是否被拦截？
+11. `none` 下写操作是否被拦截？
+12. `none` 下删除操作是否被拦截？
+13. `rwd` 下读操作是否恢复正常？
+14. `rwd` 下写操作是否恢复正常？
+15. `rwd` 下删除操作是否恢复正常？
+16. 权限在 `r -> rw -> none -> rwd` 切换后是否立即生效？
+17. `document.get_path` 是否已受读权限保护？
+18. `block` 工具是否已不再通过”把块 ID 当文档 ID”导致权限漏检？
+19. `search.fulltext` 是否能正常搜索内容？
+20. `search.query_sql` 是否拒绝非 SELECT 语句？
+21. `search.get_backlinks` / `search.get_backmentions` 是否正常返回？
+22. `tag.list` / `tag.rename` / `tag.remove` 是否正常？
+23. `system` 工具全部 action 是否可正常返回？
+24. `file.upload_asset` / `file.render_template` / `file.export_resources` 是否正常？
 17. 是否所有已暴露 action 都至少测试到一次？
 
 ### 11.5 覆盖矩阵
@@ -1547,6 +1689,27 @@ AI 完成测试后，必须输出如下结构的报告。
 - 调用参数
 - 实际返回
 - 推测原因
+
+### 11.7 最终 Bug 列表（必须放在报告最后）
+
+在整份最终报告的**最后**，必须单独输出一个 `Bug 列表` 小节，用来汇总所有接口设计或返回语义问题。
+
+以下情况即使测试步骤本身“功能上成功”，也必须记入 bug：
+
+- 成功后返回 `null`
+- 成功后只返回空字符串、空数组、空对象，且**不足以表达操作是否成功**
+- 返回内容语义过弱，容易让模型误判为失败、未执行或无结果
+- 文档说明与真实返回值不一致
+
+每条 bug 至少包含：
+
+- 对应步骤号 / action
+- 调用参数摘要
+- 实际返回
+- 为什么这属于“无意义返回”或“易误解返回”
+- 建议的期望返回形式
+
+对于“返回 `null` 等无意义内容”，不要因为功能验证通过就省略，必须在**最终报告最后**明确写出。
 
 ---
 

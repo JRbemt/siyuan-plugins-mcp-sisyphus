@@ -32,16 +32,20 @@ export async function getBacklinkDoc(
     client: SiYuanClient,
     defID: string,
     keyword?: string,
+    refTreeID?: string,
 ): Promise<IResGetBacklinkDoc> {
-    const request: IReqGetBacklinkDoc = { defID, keyword };
-    return client.request<IResGetBacklinkDoc>('/api/ref/getBacklinkDoc', request);
+    const request: IReqGetBacklinkDoc = { defID, keyword, refTreeID };
+    const result = await client.request<IResGetBacklinkDoc>('/api/ref/getBacklinkDoc', request);
+    return result ?? { backlinks: [], backmentions: [] };
 }
 
 export async function getBackmentionDoc(
     client: SiYuanClient,
     defID: string,
     keyword?: string,
+    refTreeID?: string,
 ): Promise<IResGetBackmentionDoc> {
-    const request: IReqGetBackmentionDoc = { defID, keyword };
-    return client.request<IResGetBackmentionDoc>('/api/ref/getBackmentionDoc', request);
+    const request: IReqGetBackmentionDoc = { defID, keyword, refTreeID };
+    const result = await client.request<IResGetBackmentionDoc>('/api/ref/getBackmentionDoc', request);
+    return result ?? { backmentions: [] };
 }

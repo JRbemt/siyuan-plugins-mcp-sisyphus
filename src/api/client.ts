@@ -47,6 +47,33 @@ export class SiYuanClient {
         }
     }
 
+    async readFileBinary(path: string): Promise<Uint8Array> {
+        const url = `${this.baseUrl}/api/file/getFile`;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (this.token) headers['Authorization'] = `Token ${this.token}`;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ path }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+            return new Uint8Array(await response.arrayBuffer());
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new Error(`Request timeout after ${this.timeout}ms`);
+            }
+            throw error;
+        }
+    }
+
     async writeFile(path: string, content: string): Promise<void> {
         const url = `${this.baseUrl}/api/file/putFile`;
         const headers: Record<string, string> = {};

@@ -9,7 +9,13 @@
     export let plugin: any;
 
     type GroupAction = NotebookAction | DocumentAction | BlockAction | FileAction | SearchAction | TagAction | SystemAction;
-    type NotebookPermission = 'none' | 'readonly' | 'write';
+    type NotebookPermission = 'none' | 'r' | 'rw' | 'rwd';
+    const VALID_PERMISSIONS: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
+    const LEGACY_PERMISSION_MAP = {
+        none: 'none',
+        readonly: 'r',
+        write: 'rw',
+    } as const;
 
     interface GroupDefinition {
         category: ToolCategory;
@@ -166,6 +172,15 @@
     let permLoading = true;
 
     const getLabel = (key: string, fallback: string) => plugin?.i18n?.[key] ?? fallback;
+    const normalizePermission = (value: unknown): NotebookPermission => {
+        if (VALID_PERMISSIONS.includes(value as NotebookPermission)) {
+            return value as NotebookPermission;
+        }
+        if (typeof value === "string" && value in LEGACY_PERMISSION_MAP) {
+            return LEGACY_PERMISSION_MAP[value as keyof typeof LEGACY_PERMISSION_MAP];
+        }
+        return 'none';
+    };
 
     const getDangerTitle = (title: string) => `${title} ${getLabel("mcpHighRiskBadge", "[High risk]")}`;
     const getDangerDescription = (description: string) => `${description} ${getLabel("mcpRequiresConfirmation", "Requires explicit user confirmation before execution.")} ${getLabel("mcpDefaultVisible", "This action stays visible in the default configuration.")}`;
@@ -205,13 +220,14 @@
         return notebooks.map((nb) => ({
             type: "select",
             key: `perm__${nb.id}`,
-            value: permissions[nb.id] ?? "write",
+            value: permissions[nb.id] ?? "rwd",
             title: nb.name,
-            description: getLabel("mcpPermDesc", "MCP 访问权限：读写 / 只读 / 禁止访问"),
+            description: getLabel("mcpPermDesc", "MCP 访问权限：无权限 / 只读 / 读写不可删除 / 读写可删除"),
             options: {
-                write: getLabel("mcpPermWrite", "读写"),
-                readonly: getLabel("mcpPermReadonly", "只读"),
                 none: getLabel("mcpPermNone", "禁止访问"),
+                r: getLabel("mcpPermRead", "只读"),
+                rw: getLabel("mcpPermReadWrite", "读写不可删除"),
+                rwd: getLabel("mcpPermReadWriteDelete", "读写可删除"),
             },
         }));
     }
@@ -255,7 +271,13 @@
 
         const savedPerms = await plugin?.loadData("notebookPermissions");
         if (savedPerms && typeof savedPerms === "object") {
-            permissions = savedPerms as Record<string, NotebookPermission>;
+            const normalizedPermissions = Object.fromEntries(
+                Object.entries(savedPerms).map(([notebookId, permission]) => [notebookId, normalizePermission(permission)]),
+            );
+            permissions = normalizedPermissions;
+            if (JSON.stringify(savedPerms) !== JSON.stringify(normalizedPermissions)) {
+                await plugin.saveData("notebookPermissions", normalizedPermissions);
+            }
         }
 
         await loadNotebooks();

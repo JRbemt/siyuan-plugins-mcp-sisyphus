@@ -47,6 +47,7 @@ export const SEARCH_VARIANTS: ActionVariant<SearchAction>[] = [
         schema: createActionSchema('get_backlinks', {
             id: { type: 'string', description: 'Block or document ID to find backlinks for' },
             keyword: { type: 'string', description: 'Filter backlinks by keyword' },
+            refTreeID: { type: 'string', description: 'Optional document tree ID to narrow backlink scope' },
         }, ['id'], 'Find documents/blocks that link to the given block.'),
     },
     {
@@ -54,6 +55,7 @@ export const SEARCH_VARIANTS: ActionVariant<SearchAction>[] = [
         schema: createActionSchema('get_backmentions', {
             id: { type: 'string', description: 'Block or document ID to find backmentions for' },
             keyword: { type: 'string', description: 'Filter backmentions by keyword' },
+            refTreeID: { type: 'string', description: 'Optional document tree ID to narrow backmention scope' },
         }, ['id'], 'Find documents/blocks that mention the given block name.'),
     },
 ];
@@ -123,14 +125,14 @@ export async function callSearchTool(
                 const parsed = SearchGetBacklinksSchema.parse(rawArgs);
                 const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
                 if (denied) return denied;
-                const result = await searchApi.getBacklinkDoc(client, parsed.id, parsed.keyword);
+                const result = await searchApi.getBacklinkDoc(client, parsed.id, parsed.keyword, parsed.refTreeID);
                 return createJsonResult(result);
             }
             case 'get_backmentions': {
                 const parsed = SearchGetBackmentionsSchema.parse(rawArgs);
                 const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
                 if (denied) return denied;
-                const result = await searchApi.getBackmentionDoc(client, parsed.id, parsed.keyword);
+                const result = await searchApi.getBackmentionDoc(client, parsed.id, parsed.keyword, parsed.refTreeID);
                 return createJsonResult(result);
             }
             default: {

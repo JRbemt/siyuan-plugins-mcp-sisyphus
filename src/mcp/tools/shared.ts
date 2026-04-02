@@ -293,6 +293,17 @@ export function createJsonResult(value: unknown): ToolResult {
     };
 }
 
+export function createWriteSuccessResult(
+    context: Record<string, unknown>,
+    rawResult?: unknown,
+): ToolResult {
+    if (rawResult && typeof rawResult === 'object' && !Array.isArray(rawResult)) {
+        return createJsonResult({ success: true, ...(rawResult as Record<string, unknown>), ...context });
+    }
+
+    return createJsonResult({ success: true, ...context });
+}
+
 export function createErrorResult(error: unknown, context?: ToolErrorContext): ToolResult {
     if (error instanceof ZodError) {
         const fields = formatZodIssues(error, context?.rawArgs);
@@ -324,7 +335,7 @@ export function createErrorResult(error: unknown, context?: ToolErrorContext): T
     return toErrorText(payload);
 }
 
-export function createPermissionDeniedResult(notebookId: string, currentPerm: string, required: 'read' | 'write'): ToolResult {
+export function createPermissionDeniedResult(notebookId: string, currentPerm: string, required: 'read' | 'write' | 'delete'): ToolResult {
     return toErrorText({
         error: {
             type: 'permission_denied',
