@@ -113,6 +113,55 @@ export const ACTIONS_BY_CATEGORY: { [Category in ToolCategory]: readonly ToolAct
     system: SYSTEM_ACTIONS,
 };
 
+export type ActionTier = 'basic' | 'advanced';
+
+const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
+    notebook: {
+        list: 'basic', create: 'basic', open: 'basic', close: 'basic',
+        rename: 'basic', get_conf: 'basic', get_child_docs: 'basic',
+        remove: 'advanced', set_conf: 'advanced', set_icon: 'advanced',
+        get_permissions: 'advanced', set_permission: 'advanced',
+    },
+    document: {
+        create: 'basic', get_doc: 'basic', get_path: 'basic', get_hpath: 'basic',
+        get_ids: 'basic', get_child_blocks: 'basic', get_child_docs: 'basic',
+        search_docs: 'basic', rename: 'basic',
+        remove: 'advanced', move: 'advanced', set_icon: 'advanced',
+        list_tree: 'advanced', create_daily_note: 'advanced',
+    },
+    block: {
+        get_kramdown: 'basic', get_children: 'basic', get_attrs: 'basic',
+        exists: 'basic', info: 'basic', append: 'basic', prepend: 'basic',
+        insert: 'basic', update: 'basic',
+        delete: 'advanced', move: 'advanced', fold: 'advanced', unfold: 'advanced',
+        transfer_ref: 'advanced', set_attrs: 'advanced', breadcrumb: 'advanced',
+        dom: 'advanced', recent_updated: 'advanced', word_count: 'advanced',
+    },
+    file: {
+        export_md: 'basic', upload_asset: 'basic',
+        render_template: 'advanced', render_sprig: 'advanced',
+        export_resources: 'advanced',
+    },
+    search: {
+        fulltext: 'basic', query_sql: 'basic',
+        search_tag: 'basic', get_backlinks: 'basic', get_backmentions: 'basic',
+    },
+    tag: {
+        list: 'basic', rename: 'basic',
+        remove: 'advanced',
+    },
+    system: {
+        get_version: 'basic', get_current_time: 'basic', conf: 'basic',
+        boot_progress: 'basic',
+        workspace_info: 'advanced', network: 'advanced', changelog: 'advanced',
+        sys_fonts: 'advanced', push_msg: 'advanced', push_err_msg: 'advanced',
+    },
+};
+
+export function getActionTier(category: ToolCategory, action: string): ActionTier {
+    return ACTION_TIERS[category]?.[action] ?? 'advanced';
+}
+
 const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
     notebook: new Set(['remove', 'set_permission']),
     document: new Set(['remove', 'move']),

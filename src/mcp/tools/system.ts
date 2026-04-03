@@ -17,7 +17,7 @@ import {
     SystemSysFontsSchema,
     SystemWorkspaceInfoSchema,
 } from '../types';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const SYSTEM_TOOL_NAME = 'system';
 
@@ -38,7 +38,7 @@ export const SYSTEM_VARIANTS: ActionVariant<SystemAction>[] = [
         action: 'conf',
         schema: createActionSchema('conf', {
             mode: { type: 'string', enum: ['summary', 'get'], description: 'Read mode: "summary" returns a navigable overview, "get" reads a specific key path' },
-            keyPath: { type: 'string', description: 'Dot/bracket path to a specific config field, e.g. "appearance.themeMode" or "account[0]"' },
+            keyPath: { type: 'string', description: 'Dot/bracket path to a specific config field, e.g. "conf.appearance.mode" or "conf.langs[0]"' },
             maxDepth: { type: 'number', description: 'Maximum object traversal depth for summary/get responses' },
             maxItems: { type: 'number', description: 'Maximum keys/items to include per level' },
         }, [], 'Get masked system configuration with summary-first progressive reading.'),
@@ -229,7 +229,7 @@ function buildConfResponse(raw: unknown, mode: 'summary' | 'get', keyPath: strin
         summary: summarizeValue(rootObject, 0, maxDepth, maxItems),
         hints: [
             'Use system(action="conf", mode="get", keyPath="<path>") to read a single field or subtree.',
-            'keyPath supports dot/bracket syntax such as "appearance.themeMode" or "langs[0]".',
+            'keyPath supports dot/bracket syntax such as "conf.appearance.mode" or "conf.langs[0]".',
         ],
     };
 }
@@ -294,6 +294,9 @@ export async function callSystemTool(
     const rawArgs = args ?? {};
     const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
 
+    const helpResult = tryHandleHelpAction(SYSTEM_TOOL_NAME, rawArgs, config, SYSTEM_VARIANTS);
+    if (helpResult) return helpResult;
+
     try {
         const parsedAction = SystemActionSchema.parse(rawArgs.action);
         if (!config.enabled || !config.actions[parsedAction]) {
@@ -347,7 +350,8 @@ export async function callSystemTool(
             }
             case 'get_current_time': {
                 SystemGetCurrentTimeSchema.parse(rawArgs);
-                return createJsonResult({ currentTime: await fileApi.getCurrentTime(client) });
+                const currentTime = await fileApi.getCurrentTime(client);
+                return createJsonResult({ currentTime, iso: new Date(currentTime).toISOString() });
             }
             default: {
                 const _exhaustive: never = parsedAction;

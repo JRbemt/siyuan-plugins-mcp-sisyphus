@@ -2,6 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import fs from 'fs';
 import path from 'path';
 import * as fileApi from '../../api/file';
+import { normalizeMarkdownContent } from '../normalize';
 import type { CategoryToolConfig, FileAction } from '../config';
 import { FILE_ACTION_HINTS, FILE_GUIDANCE } from '../help';
 import type { PermissionManager } from '../permissions';
@@ -14,7 +15,7 @@ import {
     FileUploadAssetSchema,
 } from '../types';
 import { ensurePermissionForDocumentId } from './context';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const FILE_TOOL_NAME = 'file';
 
@@ -102,6 +103,9 @@ export async function callFileTool(
     const rawArgs = args ?? {};
     const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
 
+    const helpResult = tryHandleHelpAction(FILE_TOOL_NAME, rawArgs, config, FILE_VARIANTS);
+    if (helpResult) return helpResult;
+
     try {
         const parsedAction = FileActionSchema.parse(rawArgs.action);
         if (!config.enabled || !config.actions[parsedAction]) {
@@ -137,7 +141,7 @@ export async function callFileTool(
                 const parsed = FileExportMdSchema.parse(rawArgs);
                 const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
                 if (denied) return denied;
-                const result = await fileApi.exportMdContent(client, parsed.id);
+                const result = normalizeMarkdownContent(await fileApi.exportMdContent(client, parsed.id));
                 return createJsonResult(result);
             }
             case 'export_resources': {

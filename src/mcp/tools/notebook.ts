@@ -19,7 +19,7 @@ import {
     NotebookSetPermissionSchema,
 } from '../types';
 import { ensurePermissionForNotebook, listChildDocumentsByPath } from './context';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createSetIconReminder, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const NOTEBOOK_TOOL_NAME = 'notebook';
 
@@ -32,7 +32,7 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
         action: 'create',
         schema: createActionSchema('create', {
             name: { type: 'string', description: 'Notebook name' },
-            icon: { type: 'string', description: 'Optional icon for the notebook, e.g., "1f4d4" for 📔' },
+            icon: { type: 'string', description: 'Optional notebook icon. Prefer a Unicode hex code string such as "1f4d4" for 📔 instead of a raw emoji character.' },
         }, ['name'], 'Create a new notebook.'),
     },
     {
@@ -88,12 +88,14 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
         action: 'set_icon',
         schema: createActionSchema('set_icon', {
             notebook: { type: 'string', description: 'Notebook ID' },
-            icon: { type: 'string', description: 'Icon value, e.g., "1f4d4" for 📔 or custom icon path' },
+            icon: { type: 'string', description: 'Icon value. Prefer a Unicode hex code string such as "1f4d4" for 📔; raw emoji characters may not render correctly. Custom icon paths are also supported.' },
         }, ['notebook', 'icon'], 'Set the icon for a notebook.'),
     },
     {
         action: 'get_permissions',
-        schema: createActionSchema('get_permissions', {}, [], 'Get permission levels for all notebooks. Returns each notebook with its permission: "none" (no access), "r" (read only), "rw" (read/write without delete), or "rwd" (read/write/delete, default).'),
+        schema: createActionSchema('get_permissions', {
+            notebook: { type: 'string', description: 'Notebook ID, or "all" to return every notebook permission entry. Omit to return all notebooks.' },
+        }, [], 'Get permission levels for notebooks. Omit notebook or pass "all" to return every notebook; pass a specific notebook ID to return only that notebook.'),
     },
     {
         action: 'set_permission',
@@ -154,6 +156,9 @@ export async function callNotebookTool(
     const rawArgs = args ?? {};
     const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
 
+    const helpResult = tryHandleHelpAction(NOTEBOOK_TOOL_NAME, rawArgs, config, NOTEBOOK_VARIANTS);
+    if (helpResult) return helpResult;
+
     try {
         const parsedAction = NotebookActionSchema.parse(rawArgs.action);
         if (!config.enabled || !config.actions[parsedAction]) {
@@ -173,7 +178,10 @@ export async function callNotebookTool(
                     await notebookApi.setNotebookIcon(client, result.notebook.id, parsed.icon);
                     result.notebook.icon = parsed.icon;
                 }
-                return createJsonResult(result.notebook);
+                return createJsonResult({
+                    ...result.notebook,
+                    iconHint: createSetIconReminder('notebook', Boolean(parsed.icon)),
+                });
             }
             case 'open': {
                 const parsed = NotebookOpenSchema.parse(rawArgs);
@@ -225,7 +233,7 @@ export async function callNotebookTool(
                 return createJsonResult({ success: true, notebook: parsed.notebook, icon: parsed.icon });
             }
             case 'get_permissions': {
-                NotebookGetPermissionsSchema.parse(rawArgs);
+                const parsed = NotebookGetPermissionsSchema.parse(rawArgs);
                 await permMgr.reload();
                 const listResult = await notebookApi.listNotebooks(client);
                 const notebooks = listResult.notebooks.map(nb => ({
@@ -233,7 +241,19 @@ export async function callNotebookTool(
                     name: nb.name,
                     permission: permMgr.get(nb.id),
                 }));
-                return createJsonResult({ notebooks });
+                if (!parsed.notebook || parsed.notebook === 'all') {
+                    return createJsonResult({ notebooks });
+                }
+
+                const notebook = notebooks.find((entry) => entry.id === parsed.notebook);
+                if (!notebook) {
+                    return createErrorResult(
+                        new Error(`Notebook "${parsed.notebook}" not found.`),
+                        { tool: NOTEBOOK_TOOL_NAME, action: 'get_permissions', rawArgs },
+                    );
+                }
+
+                return createJsonResult({ notebook });
             }
             case 'set_permission': {
                 const parsed = NotebookSetPermissionSchema.parse(rawArgs);

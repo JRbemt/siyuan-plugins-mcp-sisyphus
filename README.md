@@ -2,7 +2,9 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-A SiYuan Note MCP server plugin built around progressive disclosure — exposing seven aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`) and mandatory confirmation gates on high-risk actions, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
+> Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenCode, Claude Code, and other AI CLI tools directly in the SiYuan sidebar.
+
+A SiYuan Note MCP server plugin built around progressive disclosure — exposing seven aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`), mandatory confirmation gates on high-risk actions, and steadily refined tool behavior, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
 
 - `notebook`
 - `document`
@@ -14,14 +16,51 @@ A SiYuan Note MCP server plugin built around progressive disclosure — exposing
 
 Each tool uses a required `action` field instead of exposing dozens of endpoint-shaped tool names.
 
+## Design: Progressive Disclosure
+
+The MCP tool layer is built around **progressive disclosure** — revealing complexity only when needed, rather than flooding the AI with everything upfront.
+
+### Three layers
+
+**① Tool description (what LLMs see first)**
+
+Each tool's description leads with high-frequency **common actions** and their required fields. Low-frequency or high-risk **advanced actions** are listed by name only, with a pointer to on-demand documentation:
+
+```
+Common actions: list, create, rename, get_doc ...  (required fields shown)
+Additional actions: remove, move, list_tree ...     → read siyuan://help/action/{tool}/{action}
+```
+
+This way `listTools()` returns concise, actionable information instead of a wall of 87 actions.
+
+**② Help layer (on demand)**
+
+- Per-action detail — parameters, semantics, caveats — lives in the `siyuan://help/action/{tool}/{action}` resource, fetched only when needed
+- Call any tool with `action: "help"` to get a structured breakdown of all its actions, tiers, and hints inline (fallback for clients without resource support)
+
+**③ Response layer (large results auto-summarise)**
+
+Big result sets are capped and annotated with drill-down hints rather than returned in full:
+
+| Scenario | Behaviour |
+|----------|-----------|
+| `search.fulltext` > 20 blocks | Truncated + `page`/`pageSize` pagination hint |
+| `search.query_sql` > 50 rows | Truncated + `LIMIT`/`OFFSET` hint |
+| `block.get_children` > 50 children | Truncated + `query_sql` filter hint |
+| `document.list_tree` deep nodes | Collapsed to `childCount` beyond `maxDepth` (default 3) |
+| `document.get_doc` > 8 000 chars | Truncated + `get_child_blocks` block-by-block hint |
+
+**Design goals:** reduce first-call cognitive load; preserve full capability (all advanced actions remain usable); maintain backward compatibility with existing configs and tool names.
+
 ## Features
 
 - Full SiYuan API coverage for notebooks, documents, blocks, assets, export, and notifications
 - A smaller MCP surface: 7 grouped tools instead of dozens of endpoint-level tools
+- Clearer parameter semantics, result shapes, and help messages for smoother MCP client integration
 - Action-level toggles in the plugin settings. In the default fallback config, delete-style actions are disabled while move actions stay enabled and confirmation-gated.
 - Notebook- and document-level tree queries for direct child documents and blocks
 - Full-text search, SQL queries, tag search, backlink and backmention queries
-- Notebook permission guards now resolve block/document ownership before mutating APIs run
+- Notebook permission guards now resolve block/document ownership before mutating APIs run, with more predictable edge-case handling
 
 ## Permission Model
 
@@ -34,8 +73,9 @@ Each tool uses a required `action` field instead of exposing dozens of endpoint-
 
 ## Timeline
 
+- `v0.1.10`: Refines aggregated tool behavior, tightens permission/path/help details, and refreshes docs plus test coverage
 - `v0.1.9`: Expands notebook permissions to `none` / `r` / `rw` / `rwd`, improves move/export behaviors, and strengthens MCP docs and test coverage
-- `v0.1.8`: Adds notebook and document emoji icon support and updates the aggregated MCP tool surface back to 7 tools
+- `v0.1.8`: Adds notebook and document icon support and updates the aggregated MCP tool surface back to 7 tools
 - `v0.1.6`: Adds the `search` aggregated tool with full-text search, SQL queries, tag search, backlinks, and backmentions
 - `v0.1.5`: Shrinks MCP exposure to 4 aggregated tools and adds notebook-level permission guards with high-risk action confirmations
 - `v0.1.4`: Auto-generates the MCP config file on first install, so clients can connect out of the box
@@ -56,7 +96,7 @@ The server instructions require explicit user confirmation before these actions 
 - `block(action="move")`
 - `tag(action="remove")`
 
-If your client shows MCP instructions, the model should ask for confirmation before executing them.
+If your client shows MCP instructions, the model should ask for confirmation before executing them. This is an instruction-layer safety rule, not a server-side modal dialog guarantee.
 
 In the default fallback config, `document(action="move")` and `block(action="move")` are still exposed. They are not safe to call without confirmation just because they are enabled.
 
@@ -109,11 +149,11 @@ Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 | Action | Description |
 |--------|-------------|
 | `list` | List all notebooks |
-| `create` | Create a new notebook (supports `icon`) |
+| `create` | Create a new notebook (supports `icon`, prefer Unicode hex strings like `1f4d4`) |
 | `open` / `close` | Open or close a notebook |
 | `rename` | Rename a notebook |
 | `get_conf` / `set_conf` | Get or set notebook configuration |
-| `set_icon` | Set notebook emoji icon |
+| `set_icon` | Set notebook icon; prefer Unicode hex strings like `1f4d4` over raw emoji characters |
 | `get_permissions` | List all notebook permission levels |
 | `set_permission` | Change notebook MCP permission (`none` / `r` / `rw` / `rwd`) |
 | `get_child_docs` | Get direct child documents at notebook root with clearer notebook-state errors |
@@ -122,29 +162,29 @@ Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 
 | Action | Description |
 |--------|-------------|
-| `create` | Create a document with markdown (supports `icon`) |
+| `create` | Create a document with markdown (supports `icon`, prefer Unicode hex strings like `1f4d4`) |
 | `rename` | Rename a document by ID or storage path |
 | `remove` | Remove a document by ID or storage path |
 | `move` | Move documents by ID or storage path |
-| `set_icon` | Set document or folder emoji icon |
+| `set_icon` | Set document or folder icon; prefer Unicode hex strings like `1f4d4` over raw emoji characters |
 | `get_path` | Get storage path by document ID |
 | `get_hpath` | Get human-readable path by ID or storage path |
 | `get_ids` | Get document IDs by human-readable path |
 | `get_child_blocks` | Get direct child blocks of a document |
 | `get_child_docs` | Get direct child documents of a document |
 | `list_tree` | List the nested document tree under a notebook path |
-| `search_docs` | Search documents by title keyword |
-| `get_doc` | Get document content and metadata by ID |
+| `search_docs` | Search documents by title keyword, then optionally narrow by storage path |
+| `get_doc` | Get document content and metadata by ID (`markdown` returns clean Markdown; `html` returns the focus-view HTML payload) |
 | `create_daily_note` | Create or return today’s daily note for a notebook |
 
-Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/Weekly Note`). `rename`, `remove`, `move`, and `get_hpath` can use either `id` or `notebook + storage path`.
+Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/Weekly Note`). `rename`, `remove`, `move`, `get_hpath`, `list_tree`, and `search_docs.path` use storage paths returned by `get_path`. Use `get_ids` when you need to resolve a human-readable path to a document ID. Right after `create`, `get_ids` may briefly lag because it depends on SiYuan indexing.
 
 ### `block`
 
 | Action | Description |
 |--------|-------------|
 | `insert` / `prepend` / `append` | Insert a block at position, start, or end and return a slim success payload |
-| `update` | Update block content |
+| `update` | Update block content and return a slim success payload |
 | `delete` | Delete a block |
 | `move` | Move a block to a new position |
 | `fold` / `unfold` | Fold or unfold a foldable block |
@@ -156,7 +196,7 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 | `info` | Get root document metadata for a block |
 | `breadcrumb` | Get breadcrumb path for a block |
 | `dom` | Get rendered DOM for a block |
-| `recent_updated` | List recently updated blocks |
+| `recent_updated` | List recently updated blocks, filtered by notebook permission and optional `count` |
 | `word_count` | Get word-count statistics for blocks |
 
 ### `file`
@@ -174,7 +214,7 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 | Action | Description |
 |--------|-------------|
 | `push_msg` / `push_err_msg` | Push notification or error message |
-| `get_version` / `get_current_time` | Get SiYuan version or current time |
+| `get_version` / `get_current_time` | Get SiYuan version or current time (`get_current_time` also returns ISO text) |
 | `workspace_info` | Get SiYuan workspace metadata. High risk: exposes the absolute workspace path; disabled by default |
 | `network` | Get masked network proxy information |
 | `changelog` | Get the current version changelog when available |
@@ -188,11 +228,11 @@ Tags are not created through a dedicated tag action. Write tags into block markd
 
 | Action | Description |
 |--------|-------------|
-| `fulltext` | Full-text search across blocks |
-| `query_sql` | Execute read-only SQL (SELECT / WITH only) |
+| `fulltext` | Full-text search across blocks, with optional `stripHtml=true` to add plain-text fields |
+| `query_sql` | Execute read-only SQL (SELECT / WITH only) and return permission-filtered `rows` plus metadata |
 | `search_tag` | Search tags by keyword |
-| `get_backlinks` | Find documents/blocks that reference a block |
-| `get_backmentions` | Find documents/blocks that mention a block name |
+| `get_backlinks` | Find documents/blocks that reference a block, with partial-result metadata when filtered |
+| `get_backmentions` | Find documents/blocks that mention a block name, with partial-result metadata when filtered |
 
 ### `tag`
 

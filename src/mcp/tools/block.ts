@@ -3,6 +3,7 @@ import * as attributeApi from '../../api/attribute';
 import * as blockApi from '../../api/block';
 import type { BlockAction, CategoryToolConfig } from '../config';
 import { BLOCK_ACTION_HINTS, BLOCK_GUIDANCE } from '../help';
+import { normalizeKramdownResult, stripZeroWidthChars } from '../normalize';
 import type { PermissionManager } from '../permissions';
 import {
     BlockActionSchema,
@@ -27,7 +28,8 @@ import {
     BlockWordCountSchema,
 } from '../types';
 import { ensurePermissionForDocumentId } from './context';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, type ActionVariant, type ToolResult } from './shared';
+import { filterItemsByPermission } from './search';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const BLOCK_TOOL_NAME = 'block';
 
@@ -102,7 +104,9 @@ export const BLOCK_VARIANTS: ActionVariant<BlockAction>[] = [
         action: 'get_children',
         schema: createActionSchema('get_children', {
             id: { type: 'string', description: 'Block ID or document ID' },
-        }, ['id'], 'Get all child blocks of a parent.'),
+            page: { type: 'number', description: 'Page number (1-based), default 1' },
+            pageSize: { type: 'number', description: 'Items per page, default 50' },
+        }, ['id'], 'Get child blocks of a parent with pagination support.'),
     },
     {
         action: 'transfer_ref',
@@ -185,6 +189,12 @@ export function listBlockTools(config: CategoryToolConfig<BlockAction>) {
     );
 }
 
+export function isMissingBlockError(error: unknown): boolean {
+    return error instanceof Error
+        && (/未找到 ID 为 \[[^\]]+\] 的内容块/.test(error.message)
+            || /SiYuan API error:\s*-1\b/.test(error.message));
+}
+
 function createSlimWriteResult(
     rawResult: unknown,
     context: {
@@ -215,6 +225,34 @@ function createSlimWriteResult(
     });
 }
 
+function createUpdateResult(
+    rawResult: unknown,
+    context: {
+        id: string;
+        dataType: 'markdown' | 'dom';
+        data: string;
+    },
+): ToolResult {
+    const payload: Record<string, unknown> = {
+        success: true,
+        id: context.id,
+        dataType: context.dataType,
+    };
+
+    if (context.dataType === 'markdown') {
+        payload.markdown = stripZeroWidthChars(context.data);
+    }
+
+    if (rawResult && typeof rawResult === 'object' && !Array.isArray(rawResult)) {
+        const updated = (rawResult as Record<string, unknown>).updated;
+        if (updated !== undefined) {
+            payload.updated = updated;
+        }
+    }
+
+    return createJsonResult(payload);
+}
+
 export async function callBlockTool(
     client: SiYuanClient,
     args: Record<string, unknown> | undefined,
@@ -223,6 +261,9 @@ export async function callBlockTool(
 ): Promise<ToolResult> {
     const rawArgs = args ?? {};
     const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
+
+    const helpResult = tryHandleHelpAction(BLOCK_TOOL_NAME, rawArgs, config, BLOCK_VARIANTS);
+    if (helpResult) return helpResult;
 
     try {
         const parsedAction = BlockActionSchema.parse(rawArgs.action);
@@ -282,7 +323,11 @@ export async function callBlockTool(
                     return denied;
                 }
                 const result = await blockApi.updateBlock(client, parsed.dataType, parsed.data, parsed.id);
-                return createJsonResult(result);
+                return createUpdateResult(result, {
+                    id: parsed.id,
+                    dataType: parsed.dataType,
+                    data: parsed.data,
+                });
             }
             case 'delete': {
                 const parsed = BlockDeleteSchema.parse(rawArgs);
@@ -342,7 +387,7 @@ export async function callBlockTool(
                 if (denied) {
                     return denied;
                 }
-                const result = await blockApi.getBlockKramdown(client, parsed.id);
+                const result = normalizeKramdownResult(await blockApi.getBlockKramdown(client, parsed.id));
                 return createJsonResult(result);
             }
             case 'get_children': {
@@ -352,7 +397,27 @@ export async function callBlockTool(
                     return denied;
                 }
                 const result = await blockApi.getChildBlocks(client, parsed.id);
-                return createJsonResult(result);
+                const children = Array.isArray(result) ? result : [];
+                const page = parsed.page ?? 1;
+                const pageSize = parsed.pageSize ?? 50;
+                const totalChildren = children.length;
+                const pageCount = Math.max(1, Math.ceil(totalChildren / pageSize));
+                const normalizedPage = Math.min(page, pageCount);
+                const start = (normalizedPage - 1) * pageSize;
+                const pagedChildren = children.slice(start, start + pageSize);
+                return createJsonResult({
+                    children: pagedChildren,
+                    totalChildren,
+                    page: normalizedPage,
+                    pageSize,
+                    pageCount,
+                    showing: pagedChildren.length,
+                    ...(pageCount > 1 ? {
+                        truncated: true,
+                        hasNextPage: normalizedPage < pageCount,
+                        hint: 'Use page/pageSize to paginate. For focused reads, use block(action="get_kramdown") or search(action="query_sql") with a parent_id filter.',
+                    } : {}),
+                });
             }
             case 'transfer_ref': {
                 const parsed = BlockTransferRefSchema.parse(rawArgs);
@@ -387,9 +452,16 @@ export async function callBlockTool(
             }
             case 'exists': {
                 const parsed = BlockExistsSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                if (denied) {
-                    return denied;
+                try {
+                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+                    if (denied) {
+                        return denied;
+                    }
+                } catch (err) {
+                    if (isMissingBlockError(err)) {
+                        return createJsonResult({ id: parsed.id, exists: false });
+                    }
+                    throw err;
                 }
                 const exists = await blockApi.checkBlockExist(client, parsed.id);
                 return createJsonResult({ id: parsed.id, exists });
@@ -422,9 +494,21 @@ export async function callBlockTool(
                 return createJsonResult(result);
             }
             case 'recent_updated': {
-                BlockRecentUpdatedSchema.parse(rawArgs);
+                const parsed = BlockRecentUpdatedSchema.parse(rawArgs);
                 const result = await blockApi.getRecentUpdatedBlocks(client);
-                return createJsonResult(result);
+                const items = Array.isArray(result) ? result : [];
+                const filtered = await filterItemsByPermission(client, items, permMgr);
+                const count = typeof parsed.count === 'number' ? parsed.count : undefined;
+                const truncatedItems = typeof count === 'number' ? filtered.items.slice(0, count) : filtered.items;
+                return createJsonResult({
+                    items: truncatedItems,
+                    count: truncatedItems.length,
+                    ...(filtered.removedCount > 0 ? {
+                        partial: true,
+                        filteredOutCount: filtered.removedCount,
+                        reason: 'permission_filtered',
+                    } : {}),
+                });
             }
             case 'word_count': {
                 const parsed = BlockWordCountSchema.parse(rawArgs);

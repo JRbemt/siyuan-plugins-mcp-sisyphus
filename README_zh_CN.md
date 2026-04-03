@@ -2,7 +2,9 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`file`、`search`、`tag`、`system` 七个聚合工具。配合 `none / r / rw / rwd` 四态权限模型与高危操作二次确认机制，在简化 AI 调用路径的同时，为你的笔记数据筑起一道安全防线——让自动化更可靠，让权限管理更细腻。
+> 推荐搭配：[AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge)。如果你想把 OpenCode、kimi Code 等有 Web 端的工具直接嵌进思源侧边栏使用，这两个插件一起用会更顺手。
+
+这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`file`、`search`、`tag`、`system` 七个聚合工具。配合 `none / r / rw / rwd` 四态权限模型、高危操作二次确认机制，以及持续打磨的 tool 行为一致性，它在简化 AI 调用路径的同时，也让自动化链路更稳定、权限管理更细腻。
 
 - `notebook`
 - `document`
@@ -12,16 +14,53 @@
 - `tag`
 - `system`
 
-每个 tool 通过必填的 `action` 字段分派具体操作，不再直接暴露 41 个 endpoint 风格的 tool 名。
+每个 tool 通过必填的 `action` 字段分派具体操作，不再直接暴露大量 endpoint 风格的 tool 名。
+
+## 设计思想：渐进式披露
+
+MCP 工具层以**渐进式披露**为核心设计原则——只在需要时暴露复杂性，避免在初次交互时就把所有信息堆给 AI。
+
+### 三个层次
+
+**① Tool Description 层（LLM 最先看到的）**
+
+每个工具的描述只详述高频的 **common actions** 及其必填字段，低频或高风险的 **advanced actions** 仅列出名称，并附指向按需文档的链接：
+
+```
+Common actions: list, create, rename, get_doc ...  （展示必填字段）
+Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/action/{tool}/{action}
+```
+
+这样 LLM 在调用 `listTools()` 时得到的是精炼信息，而不是所有 action 的大杂烩。
+
+**② Help 层（按需获取）**
+
+- 每个 action 的详细说明、参数语义、注意事项存放在 `siyuan://help/action/{tool}/{action}` resource 中，只有需要时才读取
+- 调用任意工具时传入 `action: "help"` 可以内联获取该工具的完整分层帮助（为不支持 resource 的客户端提供兜底）
+
+**③ Response 层（大数据自动收敛）**
+
+大结果集不再一次性全量返回，而是附上摘要与 drill-down 指引：
+
+| 场景 | 行为 |
+|------|------|
+| `search.fulltext` 结果 > 20 条 | 截断并提示 `page`/`pageSize` 分页参数 |
+| `search.query_sql` 结果 > 50 行 | 截断并提示添加 `LIMIT`/`OFFSET` |
+| `block.get_children` 子块 > 50 | 截断并提示用 `query_sql` 过滤 |
+| `document.list_tree` 深层节点 | 默认折叠到 depth=3，通过 `maxDepth` 参数按需展开 |
+| `document.get_doc` 内容 > 8000 字符 | 截断并提示用 `get_child_blocks` 逐块读取 |
+
+**设计目标：** 降低首次调用的认知负荷；保留完整能力（所有 advanced actions 仍然可用）；对现有配置和工具名保持向后兼容。
 
 ## 功能特性
 
 - 完整覆盖笔记本、文档、块、资源、导出和通知相关的思源 API
 - 对外工具面收敛为 7 个聚合 tool，减少模型选错 tool 的概率
+- 持续优化参数语义、返回结构与帮助提示，降低 MCP 客户端接入成本
 - 插件设置仍保留到 action 级别的开关。默认 fallback 配置里，删除类 action 不暴露，移动类 action 仍暴露但必须先确认。
 - 支持按笔记本 / 文档查询直属子文档与直属子块
 - 支持全文搜索、SQL 查询、标签搜索、反向链接与反向提及查询
-- 权限校验会先解析块 / 文档所属笔记本，再决定是否允许读写
+- 权限校验会先解析块 / 文档所属笔记本，再决定是否允许读写，边界行为更可预期
 
 ## 权限模型
 
@@ -34,8 +73,9 @@
 
 ## 版本时间线
 
+- `v0.1.10`：优化 MCP 聚合 tool 的行为一致性，补强权限/路径/帮助细节，并同步更新文档与测试
 - `v0.1.9`：升级笔记本权限模型为 `none` / `r` / `rw` / `rwd`，增强 move/export 行为，并补齐 MCP 文档与测试覆盖
-- `v0.1.8`：新增笔记本与文档 emoji 图标支持，并将对外 MCP 聚合工具面恢复为 7 个 tool
+- `v0.1.8`：新增笔记本与文档图标支持，并将对外 MCP 聚合工具面恢复为 7 个 tool
 - `v0.1.6`：新增 `search` 聚合 tool，支持全文搜索、SQL 查询、标签搜索、反向链接与反向提及
 - `v0.1.5`：对外 MCP 工具面收敛为 4 个聚合 tool，并新增笔记本级权限守卫与高危 action 确认约束
 - `v0.1.4`：首次安装插件时自动生成 MCP 配置文件，开箱即可连接客户端
@@ -56,7 +96,7 @@
 - `block(action="move")`
 - `tag(action="remove")`
 
-如果你的 MCP 客户端会展示 instructions，模型应先征得确认再执行。
+如果你的 MCP 客户端会展示 instructions，模型应先征得确认再执行。这属于 instruction 层的安全约束，不代表服务端一定会弹出确认对话框。
 
 默认 fallback 配置里，`document(action="move")` 和 `block(action="move")` 依然会出现在工具列表里。它们被启用并不代表可以跳过确认。
 
@@ -109,11 +149,11 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | Action | 说明 |
 |--------|------|
 | `list` | 列出所有笔记本 |
-| `create` | 创建笔记本（支持传入 `icon`） |
+| `create` | 创建笔记本（支持传入 `icon`，推荐使用 `1f4d4` 这类 Unicode 十六进制字符串） |
 | `open` / `close` | 打开或关闭笔记本 |
 | `rename` | 重命名笔记本 |
 | `get_conf` / `set_conf` | 获取或设置笔记本配置 |
-| `set_icon` | 设置笔记本 emoji 图标 |
+| `set_icon` | 设置笔记本图标；推荐使用 `1f4d4` 这类 Unicode 十六进制字符串，而不是直接传 emoji 字符 |
 | `get_permissions` | 查看所有笔记本的 MCP 权限 |
 | `set_permission` | 修改笔记本权限（`none` / `r` / `rw` / `rwd`） |
 | `get_child_docs` | 获取笔记本根目录下的直属子文档，并返回更明确的笔记本状态错误 |
@@ -122,29 +162,29 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 
 | Action | 说明 |
 |--------|------|
-| `create` | 创建文档，支持 Markdown 内容（支持传入 `icon`） |
+| `create` | 创建文档，支持 Markdown 内容（支持传入 `icon`，推荐使用 `1f4d4` 这类 Unicode 十六进制字符串） |
 | `rename` | 重命名文档（按 ID 或存储路径） |
 | `remove` | 删除文档（按 ID 或存储路径） |
 | `move` | 移动文档（按 ID 或存储路径） |
-| `set_icon` | 设置文档/文件夹 emoji 图标 |
+| `set_icon` | 设置文档/文件夹图标；推荐使用 `1f4d4` 这类 Unicode 十六进制字符串，而不是直接传 emoji 字符 |
 | `get_path` | 按文档 ID 获取存储路径 |
 | `get_hpath` | 按 ID 或存储路径获取人类可读路径 |
 | `get_ids` | 按人类可读路径获取文档 ID |
 | `get_child_blocks` | 获取文档的直属子块 |
 | `get_child_docs` | 获取文档的直属子文档 |
 | `list_tree` | 列出指定笔记本路径下的文档树 |
-| `search_docs` | 按标题关键词搜索文档 |
-| `get_doc` | 按 ID 获取文档内容与元数据 |
+| `search_docs` | 按标题关键词搜索文档，并可再按存储路径缩小范围 |
+| `get_doc` | 按 ID 获取文档内容与元数据（`markdown` 返回干净 Markdown，`html` 返回焦点视图 HTML 载荷） |
 | `create_daily_note` | 为笔记本创建或返回今日日记 |
 
-路径语义：`create` 与 `get_ids` 使用人类可读路径（如 `/Inbox/Weekly Note`）。`rename`、`remove`、`move`、`get_hpath` 支持按 `id` 或 `notebook + 存储路径` 两种形态调用。
+路径语义：`create` 与 `get_ids` 使用人类可读路径（如 `/Inbox/Weekly Note`）。`rename`、`remove`、`move`、`get_hpath`、`list_tree` 与 `search_docs.path` 使用 `get_path` 返回的存储路径。需要把人类可读路径解析成文档 ID 时，优先使用 `get_ids`。刚创建文档后，`get_ids` 可能因 SiYuan 索引延迟而短暂滞后。
 
 ### `block`
 
 | Action | 说明 |
 |--------|------|
 | `insert` / `prepend` / `append` | 插入块到指定位置/开头/末尾，并返回精简成功结果 |
-| `update` | 更新块内容 |
+| `update` | 更新块内容，并返回精简成功结果 |
 | `delete` | 删除块 |
 | `move` | 移动块到新位置 |
 | `fold` / `unfold` | 折叠/展开可折叠块 |
@@ -156,7 +196,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `info` | 获取块所在根文档元数据 |
 | `breadcrumb` | 获取块的面包屑路径 |
 | `dom` | 获取块的渲染 DOM |
-| `recent_updated` | 列出最近更新的块 |
+| `recent_updated` | 列出最近更新的块，并按笔记本权限过滤且支持 `count` 截断 |
 | `word_count` | 获取块的字数统计 |
 
 ### `file`
@@ -174,7 +214,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | Action | 说明 |
 |--------|------|
 | `push_msg` / `push_err_msg` | 推送普通/错误通知消息 |
-| `get_version` / `get_current_time` | 获取思源版本号或当前时间 |
+| `get_version` / `get_current_time` | 获取思源版本号或当前时间（`get_current_time` 还会返回 ISO 时间文本） |
 | `workspace_info` | 获取思源工作区元数据。高风险：会暴露工作区绝对路径，默认关闭 |
 | `network` | 获取脱敏后的网络代理信息 |
 | `changelog` | 获取当前版本更新日志 |
@@ -188,11 +228,11 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 
 | Action | 说明 |
 |--------|------|
-| `fulltext` | 全文搜索 |
-| `query_sql` | 执行只读 SQL（仅允许 SELECT / WITH） |
+| `fulltext` | 全文搜索，可选 `stripHtml=true` 以额外返回纯文本字段 |
+| `query_sql` | 执行只读 SQL（仅允许 SELECT / WITH），返回经过权限过滤的 `rows` 及元数据 |
 | `search_tag` | 按关键词搜索标签 |
-| `get_backlinks` | 查找引用了指定块的文档/块 |
-| `get_backmentions` | 查找提及了指定块名称的文档/块 |
+| `get_backlinks` | 查找引用了指定块的文档/块，若被裁剪会返回部分结果元数据 |
+| `get_backmentions` | 查找提及了指定块名称的文档/块，若被裁剪会返回部分结果元数据 |
 
 ### `tag`
 

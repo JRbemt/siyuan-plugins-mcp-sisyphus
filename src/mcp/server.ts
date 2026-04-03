@@ -19,6 +19,14 @@ import { callTagTool, listTagTools } from './tools/tag';
 const PLUGIN_CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
 
 const SERVER_INSTRUCTIONS = `
+## Help resources (progressive disclosure)
+
+Each tool exposes common actions in its description. For detailed help on any action (including advanced ones), read:
+- Per-action help: siyuan://help/action/{tool}/{action}
+- Tool overview: siyuan://help/tool-overview
+- Path semantics: siyuan://help/document-path-semantics
+- Usage examples: siyuan://help/examples
+
 ## High-risk operations confirmation
 
 Before calling any of the following actions, you MUST clearly describe the action to the user and wait for explicit confirmation. Do not call them without user confirmation.

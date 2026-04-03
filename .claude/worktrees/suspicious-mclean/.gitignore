@@ -1,0 +1,11 @@
+.idea
+.vscode
+.DS_Store
+*.zip
+pnpm-lock.yaml
+package-lock.json
+node_modules
+dev
+dist
+build
+tmp

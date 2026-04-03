@@ -1,7 +1,7 @@
 import { ZodError, type ZodIssue } from 'zod';
 
-import { getEnabledActions, isDangerousAction, type CategoryToolConfig, type ToolCategory } from '../config';
-import { getActionHint } from '../help';
+import { getActionTier, getEnabledActions, isDangerousAction, type ActionTier, type CategoryToolConfig, type ToolCategory } from '../config';
+import { getActionHint, TOOL_ACTION_HINTS, TOOL_GUIDANCE_BY_CATEGORY } from '../help';
 
 export interface ToolResult {
     content: Array<{ type: 'text'; text: string }>;
@@ -147,23 +147,23 @@ function mergePropertySchemas<Action extends string>(
     return mergedProperties;
 }
 
-function buildNarrative<Action extends string>(
+function buildEssentialGuidance<Action extends string>(
     category: ToolCategory,
     actionList: Action[],
     options: AggregatedToolOptions<Action>,
 ): string[] {
-    const notes: string[] = [...(options.guidance ?? [])];
+    const notes: string[] = [];
+
+    // Only include top 2 guidance lines (most critical context)
+    const guidance = options.guidance ?? [];
+    notes.push(...guidance.slice(0, 2));
+
     const confirmationActions = actionList.filter((action) => isDangerousAction(category, action));
     if (confirmationActions.length > 0) {
-        notes.push(`Requires explicit user confirmation before: ${confirmationActions.join(', ')}.`);
+        notes.push(`Requires user confirmation before: ${confirmationActions.join(', ')}.`);
     }
 
-    for (const action of actionList) {
-        const hint = options.actionHints?.[action];
-        if (hint) {
-            notes.push(`${action}: ${hint}`);
-        }
-    }
+    // Action hints are no longer inlined — available via siyuan://help/action/{tool}/{action}
 
     return notes;
 }
@@ -247,6 +247,39 @@ function includeDebugDetails(): boolean {
     return process.env.SIYUAN_MCP_DEBUG_ERRORS === '1';
 }
 
+function buildTieredDescription<Action extends string>(
+    category: ToolCategory,
+    description: string,
+    enabledActions: Action[],
+    enabledVariants: ActionVariant<Action>[],
+    options: AggregatedToolOptions<Action>,
+): string {
+    const basicActions = enabledActions.filter((a) => getActionTier(category, a) === 'basic');
+    const advancedActions = enabledActions.filter((a) => getActionTier(category, a) === 'advanced');
+
+    const basicVariants = enabledVariants.filter((v) => basicActions.includes(v.action));
+    const basicUsageSummary = buildActionUsageSummary(basicVariants);
+
+    const parts = [
+        `${description} Use the "action" field to select the operation.`,
+    ];
+
+    if (basicActions.length > 0) {
+        parts.push(`Common actions: ${basicActions.join(', ')}. Required fields: ${basicUsageSummary}.`);
+    }
+
+    if (advancedActions.length > 0) {
+        parts.push(`Additional actions: ${advancedActions.join(', ')}. Read siyuan://help/action/${category}/{action} for details.`);
+    }
+
+    const guidance = buildEssentialGuidance(category, enabledActions, options);
+    if (guidance.length > 0) {
+        parts.push(guidance.join(' '));
+    }
+
+    return parts.join(' ');
+}
+
 export function buildAggregatedTool<Action extends string>(
     category: ToolCategory,
     description: string,
@@ -261,10 +294,7 @@ export function buildAggregatedTool<Action extends string>(
     const enabledVariants = variants.filter((variant) => enabledActionSet.has(variant.action));
     if (enabledVariants.length === 0) return [];
 
-    const actionUsageSummary = buildActionUsageSummary(enabledVariants);
-    const narrative = buildNarrative(category, enabledActions, options);
-    const guidanceText = narrative.length > 0 ? ` Guidance: ${narrative.join(' ')}` : '';
-    const fullDescription = `${description} Use the "action" field to select the operation. Enabled actions: ${enabledActions.join(', ')}. Required fields by action: ${actionUsageSummary}.${guidanceText}`;
+    const fullDescription = buildTieredDescription(category, description, enabledActions, enabledVariants, options);
     const confirmationActions = enabledActions.filter((action) => isDangerousAction(category, action));
 
     return [{
@@ -287,10 +317,86 @@ export function buildAggregatedTool<Action extends string>(
     }];
 }
 
+export function tryHandleHelpAction<Action extends string>(
+    category: ToolCategory,
+    rawArgs: Record<string, unknown>,
+    config: CategoryToolConfig<Action>,
+    variants: ActionVariant<Action>[],
+): ToolResult | null {
+    if (rawArgs.action !== 'help') return null;
+
+    const enabledActions = getEnabledActions(config) as Action[];
+    const enabledSet = new Set(enabledActions);
+    const enabledVariants = variants.filter((v) => enabledSet.has(v.action));
+
+    const tierGroups: Record<ActionTier, string[]> = { basic: [], advanced: [] };
+    for (const action of enabledActions) {
+        tierGroups[getActionTier(category, action)].push(action);
+    }
+
+    const actionDetails: Record<string, { requiredFields: string; hint?: string }> = {};
+    for (const variant of enabledVariants) {
+        const fields = getSchemaRequired(variant.schema).filter((f) => f !== 'action');
+        actionDetails[variant.action] = {
+            requiredFields: fields.length > 0 ? fields.join(', ') : 'none',
+            hint: TOOL_ACTION_HINTS[category]?.[variant.action],
+        };
+    }
+
+    const guidance = TOOL_GUIDANCE_BY_CATEGORY[category] ?? [];
+
+    return createJsonResult({
+        tool: category,
+        commonActions: tierGroups.basic,
+        advancedActions: tierGroups.advanced,
+        actions: actionDetails,
+        guidance,
+    });
+}
+
+export interface TruncationMeta {
+    truncated: boolean;
+    showing: number;
+    total: number;
+    hint: string;
+}
+
+export function applyTruncation<T>(
+    items: T[],
+    limit: number,
+    hint: string,
+): { items: T[]; meta?: TruncationMeta } {
+    if (items.length <= limit) return { items };
+    return {
+        items: items.slice(0, limit),
+        meta: {
+            truncated: true,
+            showing: limit,
+            total: items.length,
+            hint,
+        },
+    };
+}
+
 export function createJsonResult(value: unknown): ToolResult {
     return {
         content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     };
+}
+
+export function createSetIconReminder(
+    target: 'document' | 'notebook',
+    alreadySet = false,
+): string {
+    if (target === 'notebook') {
+        return alreadySet
+            ? 'Use notebook(action="set_icon") later if you want to change the notebook icon. Prefer a Unicode hex code string like "1f4d4" instead of a raw emoji character.'
+            : 'After creation, call notebook(action="set_icon") to set the notebook icon. Prefer a Unicode hex code string like "1f4d4" instead of a raw emoji character.';
+    }
+
+    return alreadySet
+        ? 'Use document(action="set_icon") later if you want to change the document icon. Prefer a Unicode hex code string like "1f4d4" instead of a raw emoji character.'
+        : 'After creation, call document(action="set_icon") to set the document icon. Prefer a Unicode hex code string like "1f4d4" instead of a raw emoji character.';
 }
 
 export function createWriteSuccessResult(

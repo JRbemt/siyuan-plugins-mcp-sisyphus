@@ -317,17 +317,21 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 目标
 
-验证 notebook 权限接口存在且返回格式正确。
+验证 notebook 权限接口存在、支持全量/单笔记本两种查询，并返回正确格式。
 
 #### 步骤
 
 1. `notebook(action="get_permissions")`
+2. `notebook(action="get_permissions", notebook="all")`
+3. `notebook(action="get_permissions", notebook=testNotebookId)`
+4. `notebook(action="get_permissions", notebook="__missing_notebook__")`
 
 #### 预期
 
-- 返回包含 `notebooks` 数组
-- 数组中存在 `id = testNotebookId` 的条目
-- 该条目至少包含：
+- 第 1、2 步返回包含 `notebooks` 数组
+- 两次全量返回中都存在 `id = testNotebookId` 的条目
+- 第 3 步返回单对象 `notebook`
+- 单对象至少包含：
   - `id`
   - `name`
   - `permission`
@@ -336,6 +340,8 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
   - `r`
   - `rw`
   - `rwd`
+- 第 4 步返回结构化错误，且错误信息明确说明 notebook 不存在
+- 若仍然无论传什么都只返回全量列表，记录为 `FAIL`
 - 若返回旧三态值 `readonly` / `write`，判定为 `FAIL`
 
 ---
@@ -1394,23 +1400,40 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 目标
 
-覆盖 `set_icon` / `list_tree` / `search_docs` / `get_doc` / `create_daily_note`。
+覆盖 `set_icon` / `list_tree` / `search_docs` / `get_doc` / `create_daily_note`，并验证树深度与长文档渐进披露。
 
 #### 步骤
 
 1. `document(action="set_icon", id=targetDocId, icon="1f4c4")`
 2. `document(action="list_tree", notebook=testNotebookId, path="/")`
-3. `document(action="search_docs", notebook=testNotebookId, query="TargetDoc")`
-4. `document(action="get_doc", id=sourceDocId)`
-5. `document(action="create_daily_note", notebook=testNotebookId)`
+3. `document(action="list_tree", notebook=testNotebookId, path="/", maxDepth=0)`
+4. `document(action="search_docs", notebook=testNotebookId, query="TargetDoc")`
+5. `document(action="get_doc", id=sourceDocId)`
+6. `document(action="get_doc", id=<workspace 内已知较长文档 ID>, mode="markdown", page=1, pageSize=8000)`
+7. 若第 6 步返回 `pageCount > 1`，继续 `document(action="get_doc", id=<同一文档ID>, mode="markdown", page=2, pageSize=8000)`
+8. `document(action="create_daily_note", notebook=testNotebookId)`
 
 #### 预期
 
 - `set_icon` 成功
 - `list_tree` 返回树中包含 `TargetDoc` 与 `ChildDoc`
+- `list_tree(maxDepth=0)` 会折叠更深层节点；若节点有子项，应出现 `childCount` 与 `childrenTruncated`
 - `search_docs` 返回结果中包含 `TargetDoc`
-- `get_doc` 返回文档内容与元数据
+- `get_doc(mode="markdown")` 返回干净 Markdown 文本与元数据；`mode="html"` 返回 HTML 视图载荷
+- 对长文档调用 `get_doc(mode="markdown")` 时，若内容超过阈值，应返回：
+  - `truncated = true`
+  - `contentLength`
+  - `showing`
+  - `page`
+  - `pageSize`
+  - `pageCount`
+  - 引导使用 `get_child_blocks` / `get_kramdown` 的 `hint`
+- 若 `pageCount > 1`，第 7 步应能拿到不同于第一页的后续内容
 - `create_daily_note` 返回日记文档；若当天已存在则返回已有文档
+
+说明：
+
+- “较长文档 ID”可先通过 `search(action="query_sql")` 在工作区中查找总长度较大的文档，再读取其中一个只读文档；不要为此修改用户数据。
 
 ### T31 - block 补充读接口
 
@@ -1517,7 +1540,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 - 全文搜索与 SQL 查询都能命中测试数据
 - 标签搜索能返回测试标签
-- `get_backlinks` 能返回转移后的引用结果
+- `get_backlinks` 能返回转移后的引用结果；若底层索引存在延迟，允许短暂轮询后再断言
 - `get_backmentions` 成功返回，即使为空数组也算通过
 
 ### T35 - tag 全量覆盖
@@ -1550,24 +1573,80 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 依次执行：
 
-1. `system(action="workspace_info")`
-2. `system(action="network")`
-3. `system(action="changelog")`
-4. `system(action="conf")`
-5. `system(action="sys_fonts")`
-6. `system(action="boot_progress")`
-7. `system(action="push_msg", msg="AI interface test message")`
-8. `system(action="push_err_msg", msg="AI interface test error")`
-9. `system(action="get_version")`
-10. `system(action="get_current_time")`
+1. `system(action="help")`
+2. `file(action="help")`
+3. `document(action="help")`
+4. `search(action="help")`
+5. `system(action="workspace_info")`
+6. `system(action="network")`
+7. `system(action="changelog")`
+8. `system(action="conf")`
+9. `system(action="conf", mode="get", keyPath="conf.appearance.mode")`
+10. `system(action="conf", mode="get", keyPath="conf.langs[0]")`
+11. `system(action="sys_fonts")`
+12. `system(action="boot_progress")`
+13. `system(action="push_msg", msg="AI interface test message")`
+14. `system(action="push_err_msg", msg="AI interface test error")`
+15. `system(action="get_version")`
+16. `system(action="get_current_time")`
 
 #### 预期
 
-- 每个调用都成功
+- `help` 伪 action 返回分层结构，至少包含：
+  - `commonActions`
+  - `advancedActions`
+  - `actions`
+  - `guidance`
 - `workspace_info` 返回工作区元数据
 - `network` / `conf` 返回已脱敏信息
+- `conf` 的 summary 顶层能看到 `conf` / `isPublish` / `start`
+- `conf(mode="get")` 只有使用 `conf.` 前缀路径时才应成功；`conf.appearance.mode`、`conf.langs[0]` 是有效示例
 - `sys_fonts` 返回字体列表
 - `push_msg` / `push_err_msg` 返回成功，且不会中断后续测试
+- `get_version` / `get_current_time` 返回结构化字段
+
+如 `system(action="conf", mode="get", keyPath="appearance.themeMode")` 这类旧示例仍出现在返回 hint 或 help 中，记录为 `FAIL`
+
+---
+
+### T36A - help 资源与渐进披露补充
+
+#### 目标
+
+验证 `help` 伪 action、结果截断与分页提示都已生效。
+
+#### 步骤
+
+1. `search(action="help")`
+2. `block(action="help")`
+3. 通过 `search(action="query_sql", stmt="SELECT id, content, type, updated FROM blocks ORDER BY updated DESC LIMIT 80")` 验证 SQL 截断
+4. 通过 `search(action="fulltext", query="测试", page=1, pageSize=100)` 验证全文搜索截断
+5. 对一个子块较多的文档或块执行 `block(action="get_children", id=..., page=1, pageSize=50)` 验证子块分页
+6. 若返回 `pageCount > 1`，继续执行 `block(action="get_children", id=..., page=2, pageSize=50)`
+
+#### 预期
+
+- `help` 返回里，basic / advanced action 有清晰分层
+- SQL 查询在结果较大时返回：
+  - `truncated = true`
+  - `showing = 50`
+  - `total`
+  - `hint` 中提示 `LIMIT/OFFSET`
+- 全文搜索在结果较大时返回：
+  - `truncated = true`
+  - `showing = 20`
+  - `total`
+  - `paginationHint`
+- `block.get_children` 在结果较大时返回：
+  - `children`
+  - `totalChildren`
+  - `page`
+  - `pageSize`
+  - `pageCount`
+  - `showing`
+  - `truncated = true`
+  - 引导读取局部内容的 `hint`
+- 若 `pageCount > 1`，第 6 步应返回与第一页不同的子块切片
 
 ### T37 - 权限覆盖矩阵复核
 

@@ -20,7 +20,8 @@ export async function fullTextSearchBlock(
 
 export async function querySQL(client: SiYuanClient, stmt: string): Promise<unknown[]> {
     const request: IReqQuerySQL = { stmt };
-    return client.request<unknown[]>('/api/query/sql', request);
+    const result = await client.request<unknown[] | null>('/api/query/sql', request);
+    return Array.isArray(result) ? result : [];
 }
 
 export async function searchTag(client: SiYuanClient, k: string): Promise<IResSearchTag> {
@@ -33,10 +34,9 @@ export async function getBacklinkDoc(
     defID: string,
     keyword?: string,
     refTreeID?: string,
-): Promise<IResGetBacklinkDoc> {
+): Promise<IResGetBacklinkDoc | null> {
     const request: IReqGetBacklinkDoc = { defID, keyword, refTreeID };
-    const result = await client.request<IResGetBacklinkDoc>('/api/ref/getBacklinkDoc', request);
-    return result ?? { backlinks: [], backmentions: [] };
+    return client.request<IResGetBacklinkDoc | null>('/api/ref/getBacklinkDoc', request);
 }
 
 export async function getBackmentionDoc(
@@ -44,8 +44,7 @@ export async function getBackmentionDoc(
     defID: string,
     keyword?: string,
     refTreeID?: string,
-): Promise<IResGetBackmentionDoc> {
+): Promise<IResGetBackmentionDoc | null> {
     const request: IReqGetBackmentionDoc = { defID, keyword, refTreeID };
-    const result = await client.request<IResGetBackmentionDoc>('/api/ref/getBackmentionDoc', request);
-    return result ?? { backmentions: [] };
+    return client.request<IResGetBackmentionDoc | null>('/api/ref/getBackmentionDoc', request);
 }

@@ -167,34 +167,36 @@ async function assertDefaultToolList() {
         assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system']);
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
-        assert.match(descriptions.notebook, /list, create, open, close, rename, get_conf, set_conf, set_icon, get_permissions, get_child_docs/);
-        assert.match(descriptions.notebook, /Enabled actions: list, create, open, close, rename, get_conf, set_conf, set_icon, get_permissions, get_child_docs\./);
-        assert.match(descriptions.notebook, /Required fields by action/);
-        assert.match(descriptions.notebook, /Guidance:/);
-        assert.match(descriptions.document, /create, rename, move, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs, set_icon, list_tree, search_docs, get_doc, create_daily_note/);
-        assert.match(descriptions.document, /Enabled actions: create, rename, move, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs, set_icon, list_tree, search_docs, get_doc, create_daily_note\./);
+        assert.match(descriptions.notebook, /Common actions: list, create, open, close, rename, get_conf, get_child_docs/);
+        assert.match(descriptions.notebook, /Additional actions: set_conf, set_icon, get_permissions/);
+        assert.match(descriptions.notebook, /Common actions:/);
+        assert.match(descriptions.notebook, /Additional actions:/);
+        assert.match(descriptions.notebook, /get_permissions/);
+        assert.match(descriptions.document, /Common actions: create, rename, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs, search_docs, get_doc/);
+        assert.match(descriptions.document, /Additional actions: move, set_icon, list_tree, create_daily_note/);
+        assert.match(descriptions.document, /Common actions: .*get_doc/);
+        assert.match(descriptions.document, /Additional actions: .*list_tree/);
         assert.match(descriptions.document, /rename: id, title \| notebook, path, title/);
         assert.match(descriptions.document, /human-readable target path/);
         assert.match(descriptions.document, /storage paths returned by document\(action="get_path"\)/);
-        assert.match(descriptions.document, /move: Use either fromIDs \+ toID or fromPaths \+ toNotebook \+ toPath/);
-        assert.match(descriptions.document, /toPath must be the storage path of an existing destination document/);
-        assert.match(descriptions.block, /insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs, exists, info, breadcrumb, dom, recent_updated, word_count/);
-        assert.match(descriptions.block, /Enabled actions: insert, prepend, append, update, move, fold, unfold, get_kramdown, get_children, transfer_ref, set_attrs, get_attrs, exists, info, breadcrumb, dom, recent_updated, word_count\./);
-        assert.match(descriptions.block, /foldable block ID/);
-        assert.match(descriptions.block, /structured success object/);
-        assert.match(descriptions.file, /upload_asset, render_template, render_sprig, export_md, export_resources/);
-        assert.match(descriptions.file, /base64-encoded file payload/);
+        assert.match(descriptions.document, /Read siyuan:\/\/help\/action\/document\/\{action\} for details/);
+        assert.match(descriptions.block, /Common actions: insert, prepend, append, update, get_kramdown, get_children, get_attrs, exists, info/);
+        assert.match(descriptions.block, /Additional actions: move, fold, unfold, transfer_ref, set_attrs, breadcrumb, dom, recent_updated, word_count/);
+        assert.match(descriptions.block, /Common actions: .*get_children/);
+        assert.match(descriptions.block, /Additional actions: .*move/);
+        assert.match(descriptions.block, /Read siyuan:\/\/help\/action\/block\/\{action\} for details/);
+        assert.match(descriptions.file, /Common actions: upload_asset, export_md/);
+        assert.match(descriptions.file, /Additional actions: render_template, render_sprig, export_resources/);
+        assert.match(descriptions.file, /Read siyuan:\/\/help\/action\/file\/\{action\} for details/);
         assert.match(descriptions.search, /fulltext, query_sql, search_tag, get_backlinks, get_backmentions/);
-        assert.match(descriptions.search, /Enabled actions: fulltext, query_sql, search_tag, get_backlinks, get_backmentions\./);
+        assert.match(descriptions.search, /Common actions: fulltext, query_sql, search_tag, get_backlinks, get_backmentions/);
         assert.match(descriptions.search, /read-only/i);
-        assert.match(descriptions.tag, /list, rename, remove/);
+        assert.match(descriptions.tag, /Common actions: list, rename/);
+        assert.match(descriptions.tag, /Additional actions: remove/);
         assert.match(descriptions.tag, /#标签#/);
-        assert.doesNotMatch(descriptions.system, /Enabled actions: [^.]*workspace_info/);
-        assert.match(descriptions.system, /Enabled actions: network, changelog, conf, sys_fonts, boot_progress, push_msg, push_err_msg, get_version, get_current_time\./);
+        assert.doesNotMatch(descriptions.system, /Common actions: [^.]*workspace_info/);
+        assert.match(descriptions.system, /Common actions: conf, boot_progress, get_version, get_current_time/);
         assert.match(descriptions.system, /workspace_info.*disabled by default|disabled by default.*workspace_info/i);
-        assert.match(descriptions.system, /conf: .*mode="get".*keyPath/);
-        assert.match(descriptions.system, /sys_fonts: .*mode="list".*offset\/limit\/query/);
-
         const schemas = Object.fromEntries(tools.map((tool) => [tool.name, tool.inputSchema]));
         for (const [name, schema] of Object.entries(schemas)) {
             assert.equal(schema.type, 'object', `${name} should expose an object schema`);
@@ -214,6 +216,8 @@ async function assertDefaultToolList() {
         assert.ok('k' in schemas.search.properties);
         assert.match(schemas.document.properties.path.description, /For action="create"/);
         assert.match(schemas.block.properties.parentID.description, /document head or tail/);
+        assert.match(schemas.system.properties.keyPath.description, /conf\.appearance\.mode/);
+        assert.match(schemas.system.properties.offset.description, /Pagination offset/);
 
         const resources = (await client.listResources()).resources;
         assert.deepEqual(resources.map((resource) => resource.uri), [
@@ -359,7 +363,7 @@ async function runLiveSmoke() {
                 action: 'get_children',
                 id: source.json.id,
             })).json;
-            assert.ok(Array.isArray(preheatedChildren));
+            assert.ok(Array.isArray(preheatedChildren.children));
 
             const notebookChildren = (await callToolJson(client, 'notebook', {
                 action: 'get_child_docs',
@@ -466,12 +470,12 @@ async function runLiveSmoke() {
                 action: 'get_child_blocks',
                 id: source.json.id,
             })).json;
-            assert.deepEqual(docChildrenViaDocument, docChildren);
-            assert.equal(docChildren[0].markdown, '- doc prepend');
-            assert.equal(docChildren[1].markdown, '# Source');
-            assert.equal(docChildren[2].markdown, 'seed');
-            assert.equal(docChildren[3].markdown, '- insert before append');
-            assert.equal(docChildren[4].markdown, '- doc append');
+            assert.deepEqual(docChildrenViaDocument, docChildren.children);
+            assert.equal(docChildren.children[0].markdown, '- doc prepend');
+            assert.equal(docChildren.children[1].markdown, '# Source');
+            assert.equal(docChildren.children[2].markdown, 'seed');
+            assert.equal(docChildren.children[3].markdown, '- insert before append');
+            assert.equal(docChildren.children[4].markdown, '- doc append');
 
             const nestedAppend = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'append',
@@ -532,8 +536,8 @@ async function runLiveSmoke() {
                 action: 'get_children',
                 id: source.json.id,
             })).json;
-            assert.equal(docChildrenAfterMove[3].markdown, '- doc append updated');
-            assert.equal(docChildrenAfterMove[4].markdown, '- insert before append');
+            assert.equal(docChildrenAfterMove.children[3].markdown, '- doc append updated');
+            assert.equal(docChildrenAfterMove.children[4].markdown, '- insert before append');
 
             const kramdown = (await callToolJson(client, 'block', {
                 action: 'get_kramdown',
@@ -550,6 +554,26 @@ async function runLiveSmoke() {
             })).json;
             assert.equal(exportMd.hPath, '/SourceDoc ID Renamed');
             assert.match(exportMd.content, /- doc append updated/);
+
+            const getDocMarkdown = (await callToolJson(client, 'document', {
+                action: 'get_doc',
+                id: source.json.id,
+                mode: 'markdown',
+            })).json;
+            assert.equal(getDocMarkdown.mode, 'markdown');
+            assert.equal(getDocMarkdown.hPath, '/SourceDoc ID Renamed');
+            assert.match(getDocMarkdown.content, /- doc append updated/);
+
+            const getDocMarkdownPaged = (await callToolJson(client, 'document', {
+                action: 'get_doc',
+                id: source.json.id,
+                mode: 'markdown',
+                page: 1,
+                pageSize: 20,
+            })).json;
+            assert.equal(getDocMarkdownPaged.page, 1);
+            assert.equal(getDocMarkdownPaged.pageSize, 20);
+            assert.equal(typeof getDocMarkdownPaged.pageCount, 'number');
 
             const uploadAsset = (await callToolJson(client, 'file', {
                 action: 'upload_asset',
@@ -596,14 +620,18 @@ async function runLiveSmoke() {
             const fulltextResult = (await callToolJson(client, 'search', {
                 action: 'fulltext',
                 query: 'doc append updated',
+                stripHtml: true,
             })).json;
             assert.ok('blocks' in fulltextResult || 'matchedBlockCount' in fulltextResult);
+            if (Array.isArray(fulltextResult.blocks) && fulltextResult.blocks.length > 0 && typeof fulltextResult.blocks[0].content === 'string') {
+                assert.ok('plainContent' in fulltextResult.blocks[0]);
+            }
 
             const sqlResult = (await callToolJson(client, 'search', {
                 action: 'query_sql',
                 stmt: "SELECT * FROM blocks WHERE content LIKE '%doc append updated%' LIMIT 5",
             })).json;
-            assert.ok(Array.isArray(sqlResult));
+            assert.ok(Array.isArray(sqlResult.rows));
 
             const sqlDenied = (await callToolJson(client, 'search', {
                 action: 'query_sql',
@@ -838,8 +866,8 @@ async function runLiveSmoke() {
                 action: 'get_children',
                 id: source.json.id,
             })).json;
-            assert.ok(Array.isArray(writeChildren));
-            assert.ok(writeChildren.length > 0);
+            assert.ok(Array.isArray(writeChildren.children));
+            assert.ok(writeChildren.children.length > 0);
 
             const writeRecovered = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'append',
@@ -871,7 +899,12 @@ async function runLiveSmoke() {
                 data: '- write restored updated',
                 id: writeRecoveredBlockId,
             })).json);
-            assert.equal(writeUpdated.doOperations[0].id, writeRecoveredBlockId);
+            assert.deepEqual(writeUpdated, {
+                success: true,
+                id: writeRecoveredBlockId,
+                dataType: 'markdown',
+                markdown: '- write restored updated',
+            });
 
             await callToolJson(client, 'document', {
                 action: 'rename',

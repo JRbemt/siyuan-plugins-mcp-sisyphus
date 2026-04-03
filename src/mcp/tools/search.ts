@@ -2,6 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import * as searchApi from '../../api/search';
 import type { CategoryToolConfig, SearchAction } from '../config';
 import { SEARCH_ACTION_HINTS, SEARCH_GUIDANCE } from '../help';
+import { normalizeFullTextSearchResult } from '../normalize';
 import type { PermissionManager } from '../permissions';
 import {
     SearchActionSchema,
@@ -11,8 +12,8 @@ import {
     SearchQuerySqlSchema,
     SearchTagSchema,
 } from '../types';
-import { ensurePermissionForDocumentId } from './context';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
+import { createResultResolutionCache, ensurePermissionForDocumentId, resolveResultItemContext } from './context';
+import { applyTruncation, buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const SEARCH_TOOL_NAME = 'search';
 
@@ -28,6 +29,7 @@ export const SEARCH_VARIANTS: ActionVariant<SearchAction>[] = [
             orderBy: { type: 'number', description: 'Sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)' },
             page: { type: 'number', description: 'Page number (1-based), default 1' },
             pageSize: { type: 'number', description: 'Results per page, default 32, max 128' },
+            stripHtml: { type: 'boolean', description: 'When true, add plain-text fields while keeping highlighted HTML content unchanged' },
         }, ['query'], 'Full-text search across all blocks.'),
     },
     {
@@ -73,6 +75,282 @@ export function listSearchTools(config: CategoryToolConfig<SearchAction>) {
     );
 }
 
+function getNotebookIdFromItem(item: unknown): string | undefined {
+    if (!item || typeof item !== 'object') return undefined;
+    const typedItem = item as Record<string, unknown>;
+    const candidates = [typedItem.notebook, typedItem.box, typedItem.boxID, typedItem.notebookId];
+    return candidates.find((value): value is string => typeof value === 'string' && value.length > 0);
+}
+
+function filterReadableItems(items: unknown[], permMgr: PermissionManager): { items: unknown[]; removedCount: number } {
+    const filteredItems = items.filter((item) => {
+        const notebookId = getNotebookIdFromItem(item);
+        return !notebookId || permMgr.canRead(notebookId);
+    });
+    return {
+        items: filteredItems,
+        removedCount: items.length - filteredItems.length,
+    };
+}
+
+function createPartialMetadata(removedCount: number): {
+    partial?: boolean;
+    filteredOutCount?: number;
+    reason?: 'permission_filtered';
+} {
+    return removedCount > 0
+        ? {
+            partial: true,
+            filteredOutCount: removedCount,
+            reason: 'permission_filtered',
+        }
+        : {};
+}
+
+function escapeSqlString(value: string): string {
+    return value.replace(/'/g, "''");
+}
+
+function escapeSqlLike(value: string): string {
+    return value
+        .replace(/\\/g, '\\\\')
+        .replace(/%/g, '\\%')
+        .replace(/_/g, '\\_')
+        .replace(/'/g, "''");
+}
+
+function hasBacklinkPayload(result: unknown): result is { backlinks?: unknown[]; backmentions?: unknown[] } {
+    return !!result && typeof result === 'object';
+}
+
+async function getBlockLabel(client: SiYuanClient, id: string): Promise<string | undefined> {
+    const rows = await searchApi.querySQL(
+        client,
+        `SELECT content, name FROM blocks WHERE id = '${escapeSqlString(id)}' LIMIT 1`,
+    );
+    const row = Array.isArray(rows) && rows[0] && typeof rows[0] === 'object'
+        ? rows[0] as Record<string, unknown>
+        : null;
+    if (!row) return undefined;
+
+    const label = [row.content, row.name].find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    return label?.trim();
+}
+
+async function queryFallbackBacklinkRows(
+    client: SiYuanClient,
+    id: string,
+    keyword?: string,
+    refTreeID?: string,
+): Promise<unknown[]> {
+    const escapedId = escapeSqlString(id);
+    const filters = [
+        "s.type = 'textmark block-ref'",
+        `instr(s.markdown, '${escapedId}') > 0`,
+    ];
+    if (refTreeID) {
+        filters.push(`s.root_id = '${escapeSqlString(refTreeID)}'`);
+    }
+    if (keyword && keyword.trim()) {
+        filters.push(`b.content LIKE '%${escapeSqlLike(keyword.trim())}%' ESCAPE '\\'`);
+    }
+
+    return searchApi.querySQL(
+        client,
+        `
+        SELECT
+            s.block_id AS id,
+            s.root_id,
+            s.box,
+            s.path,
+            b.hpath,
+            b.type,
+            b.content,
+            b.markdown
+        FROM spans s
+        LEFT JOIN blocks b ON b.id = s.block_id
+        WHERE ${filters.join(' AND ')}
+        ORDER BY b.updated DESC
+        LIMIT 200
+        `.trim(),
+    );
+}
+
+async function queryFallbackBackmentionRows(
+    client: SiYuanClient,
+    id: string,
+    keyword?: string,
+    refTreeID?: string,
+): Promise<unknown[]> {
+    const label = await getBlockLabel(client, id);
+    if (!label) return [];
+
+    const filters = [
+        `id != '${escapeSqlString(id)}'`,
+        `instr(content, '${escapeSqlString(label)}') > 0`,
+    ];
+    if (refTreeID) {
+        filters.push(`root_id = '${escapeSqlString(refTreeID)}'`);
+    }
+    if (keyword && keyword.trim()) {
+        filters.push(`instr(content, '${escapeSqlString(keyword.trim())}') > 0`);
+    }
+
+    return searchApi.querySQL(
+        client,
+        `
+        SELECT
+            id,
+            root_id,
+            box,
+            path,
+            hpath,
+            type,
+            content,
+            markdown
+        FROM blocks
+        WHERE ${filters.join(' AND ')}
+        ORDER BY updated DESC
+        LIMIT 200
+        `.trim(),
+    );
+}
+
+async function getBacklinkDocWithFallback(
+    client: SiYuanClient,
+    id: string,
+    keyword?: string,
+    refTreeID?: string,
+): Promise<{ backlinks: unknown[]; backmentions: unknown[]; fallbackUsed?: boolean }> {
+    const result = await searchApi.getBacklinkDoc(client, id, keyword, refTreeID);
+    if (hasBacklinkPayload(result) && (Array.isArray(result.backlinks) || Array.isArray(result.backmentions))) {
+        return {
+            backlinks: Array.isArray(result.backlinks) ? result.backlinks : [],
+            backmentions: Array.isArray(result.backmentions) ? result.backmentions : [],
+        };
+    }
+
+    const [backlinks, backmentions] = await Promise.all([
+        queryFallbackBacklinkRows(client, id, keyword, refTreeID),
+        queryFallbackBackmentionRows(client, id, keyword, refTreeID),
+    ]);
+    return { backlinks, backmentions, fallbackUsed: true };
+}
+
+async function getBackmentionDocWithFallback(
+    client: SiYuanClient,
+    id: string,
+    keyword?: string,
+    refTreeID?: string,
+): Promise<{ backmentions: unknown[]; fallbackUsed?: boolean }> {
+    const result = await searchApi.getBackmentionDoc(client, id, keyword, refTreeID);
+    if (result && typeof result === 'object' && Array.isArray((result as { backmentions?: unknown[] }).backmentions)) {
+        return { backmentions: (result as { backmentions: unknown[] }).backmentions };
+    }
+
+    const backmentions = await queryFallbackBackmentionRows(client, id, keyword, refTreeID);
+    return { backmentions, fallbackUsed: true };
+}
+
+export async function filterItemsByPermission(
+    client: SiYuanClient,
+    items: unknown[],
+    permMgr: PermissionManager,
+): Promise<{ items: unknown[]; removedCount: number }> {
+    const cache = createResultResolutionCache();
+    const filteredItems: unknown[] = [];
+    let removedCount = 0;
+
+    for (const item of items) {
+        const context = await resolveResultItemContext(client, item, cache);
+        if (!context?.notebook || !permMgr.canRead(context.notebook)) {
+            removedCount += 1;
+            continue;
+        }
+        filteredItems.push(item);
+    }
+
+    return { items: filteredItems, removedCount };
+}
+
+export async function filterItemsByPermissionAndPath(
+    client: SiYuanClient,
+    items: unknown[],
+    permMgr: PermissionManager,
+    scopePath?: string,
+): Promise<{ items: unknown[]; permissionFilteredOutCount: number; pathFilteredOutCount: number }> {
+    const cache = createResultResolutionCache();
+    const filteredItems: unknown[] = [];
+    let permissionFilteredOutCount = 0;
+    let pathFilteredOutCount = 0;
+
+    const normalizedScopePath = typeof scopePath === 'string' && scopePath.length > 0 ? (scopePath.startsWith('/') ? scopePath : `/${scopePath}`) : undefined;
+
+    for (const item of items) {
+        const context = await resolveResultItemContext(client, item, cache);
+        if (!context?.notebook || !permMgr.canRead(context.notebook)) {
+            permissionFilteredOutCount += 1;
+            continue;
+        }
+        if (normalizedScopePath) {
+            if (!context.path || !(context.path === normalizedScopePath || context.path.startsWith(`${normalizedScopePath}/`))) {
+                pathFilteredOutCount += 1;
+                continue;
+            }
+        }
+        filteredItems.push(item);
+    }
+
+    return { items: filteredItems, permissionFilteredOutCount, pathFilteredOutCount };
+}
+
+export function filterFullTextSearchResultByPermission<T extends {
+    blocks?: unknown[];
+    matchedBlockCount?: number;
+    matchedRootCount?: number;
+}>(result: T, permMgr: PermissionManager): T & { filteredOutBlockCount?: number } {
+    if (!Array.isArray(result.blocks)) return result;
+
+    const { items: blocks, removedCount } = filterReadableItems(result.blocks, permMgr);
+    const uniqueRoots = new Set<string>();
+    for (const block of blocks) {
+        if (!block || typeof block !== 'object') continue;
+        const typedBlock = block as Record<string, unknown>;
+        const rootId = [typedBlock.rootID, typedBlock.rootId, typedBlock.root_id, typedBlock.id, typedBlock.path]
+            .find((value): value is string => typeof value === 'string' && value.length > 0);
+        if (rootId) uniqueRoots.add(rootId);
+    }
+
+    return {
+        ...result,
+        blocks,
+        matchedBlockCount: blocks.length,
+        matchedRootCount: uniqueRoots.size,
+        ...(removedCount > 0 ? { filteredOutBlockCount: removedCount } : {}),
+    };
+}
+
+export function filterBacklinkResultByPermission<T extends {
+    backlinks?: unknown[];
+    backmentions?: unknown[];
+}>(result: T, permMgr: PermissionManager): T & { filteredOutCount?: number } {
+    const backlinks = Array.isArray(result.backlinks) ? filterReadableItems(result.backlinks, permMgr) : undefined;
+    const backmentions = Array.isArray(result.backmentions) ? filterReadableItems(result.backmentions, permMgr) : undefined;
+    const removedCount = (backlinks?.removedCount ?? 0) + (backmentions?.removedCount ?? 0);
+
+    return {
+        ...result,
+        ...(backlinks ? { backlinks: backlinks.items } : {}),
+        ...(backmentions ? { backmentions: backmentions.items } : {}),
+        ...createPartialMetadata(removedCount),
+    };
+}
+
+function isPermissionRelatedApiError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    return /permission[_\s-]?denied|has permission|read access is required|write access is required/i.test(error.message);
+}
+
 export async function callSearchTool(
     client: SiYuanClient,
     args: Record<string, unknown> | undefined,
@@ -81,6 +359,9 @@ export async function callSearchTool(
 ): Promise<ToolResult> {
     const rawArgs = args ?? {};
     const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
+
+    const helpResult = tryHandleHelpAction(SEARCH_TOOL_NAME, rawArgs, config, SEARCH_VARIANTS);
+    if (helpResult) return helpResult;
 
     try {
         const parsedAction = SearchActionSchema.parse(rawArgs.action);
@@ -101,7 +382,21 @@ export async function callSearchTool(
                     page: parsed.page,
                     pageSize: parsed.pageSize,
                 });
-                return createJsonResult(result);
+                const filtered = filterFullTextSearchResultByPermission(result, permMgr);
+                const normalized = normalizeFullTextSearchResult(filtered, parsed.stripHtml ?? false);
+                const blocks = Array.isArray((normalized as Record<string, unknown>).blocks)
+                    ? (normalized as Record<string, unknown>).blocks as unknown[]
+                    : [];
+                const pageCount = typeof (normalized as Record<string, unknown>).pageCount === 'number'
+                    ? (normalized as Record<string, unknown>).pageCount as number
+                    : 1;
+                const truncated = applyTruncation(blocks, 20, 'Use page/pageSize parameters to paginate. Current page: ' + (parsed.page ?? 1) + '.');
+                return createJsonResult({
+                    ...(normalized as Record<string, unknown>),
+                    blocks: truncated.items,
+                    ...(truncated.meta ? truncated.meta : {}),
+                    ...(pageCount > 1 ? { pageCount, paginationHint: `${pageCount} pages available. Use page (1-based) and pageSize to navigate.` } : {}),
+                });
             }
             case 'query_sql': {
                 const parsed = SearchQuerySqlSchema.parse(rawArgs);
@@ -114,7 +409,15 @@ export async function callSearchTool(
                     );
                 }
                 const result = await searchApi.querySQL(client, parsed.stmt);
-                return createJsonResult(result);
+                const rows = Array.isArray(result) ? result : [];
+                const filtered = await filterItemsByPermission(client, rows, permMgr);
+                const truncated = applyTruncation(filtered.items, 50, 'Add LIMIT and OFFSET to your SQL for pagination.');
+                return createJsonResult({
+                    rows: truncated.items,
+                    rowCount: filtered.items.length,
+                    ...createPartialMetadata(filtered.removedCount),
+                    ...(truncated.meta ? truncated.meta : {}),
+                });
             }
             case 'search_tag': {
                 const parsed = SearchTagSchema.parse(rawArgs);
@@ -125,15 +428,48 @@ export async function callSearchTool(
                 const parsed = SearchGetBacklinksSchema.parse(rawArgs);
                 const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
                 if (denied) return denied;
-                const result = await searchApi.getBacklinkDoc(client, parsed.id, parsed.keyword, parsed.refTreeID);
-                return createJsonResult(result);
+                try {
+                    const result = await getBacklinkDocWithFallback(client, parsed.id, parsed.keyword, parsed.refTreeID);
+                    const filtered = filterBacklinkResultByPermission(result, permMgr);
+                    return createJsonResult({
+                        ...filtered,
+                        ...(result.fallbackUsed ? { warning: 'SiYuan returned no backlink payload; SQL fallback results are shown.' } : {}),
+                    });
+                } catch (error) {
+                    if (isPermissionRelatedApiError(error)) {
+                        return createJsonResult({
+                            backlinks: [],
+                            backmentions: [],
+                            warning: 'SiYuan rejected part of the backlink query due to restricted notebooks; restricted results were omitted.',
+                            partial: true,
+                            reason: 'permission_filtered',
+                        });
+                    }
+                    throw error;
+                }
             }
             case 'get_backmentions': {
                 const parsed = SearchGetBackmentionsSchema.parse(rawArgs);
                 const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
                 if (denied) return denied;
-                const result = await searchApi.getBackmentionDoc(client, parsed.id, parsed.keyword, parsed.refTreeID);
-                return createJsonResult(result);
+                try {
+                    const result = await getBackmentionDocWithFallback(client, parsed.id, parsed.keyword, parsed.refTreeID);
+                    const filtered = filterBacklinkResultByPermission(result, permMgr);
+                    return createJsonResult({
+                        ...filtered,
+                        ...(result.fallbackUsed ? { warning: 'SiYuan returned no backmention payload; SQL fallback results are shown.' } : {}),
+                    });
+                } catch (error) {
+                    if (isPermissionRelatedApiError(error)) {
+                        return createJsonResult({
+                            backmentions: [],
+                            warning: 'SiYuan rejected part of the backmention query due to restricted notebooks; restricted results were omitted.',
+                            partial: true,
+                            reason: 'permission_filtered',
+                        });
+                    }
+                    throw error;
+                }
             }
             default: {
                 const _exhaustive: never = parsedAction;

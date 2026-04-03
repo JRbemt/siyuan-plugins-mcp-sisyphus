@@ -9,7 +9,7 @@ import {
     TagRemoveSchema,
     TagRenameSchema,
 } from '../types';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, type ActionVariant, type ToolResult } from './shared';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const TAG_TOOL_NAME = 'tag';
 
@@ -58,6 +58,9 @@ export async function callTagTool(
 ): Promise<ToolResult> {
     const rawArgs = args ?? {};
     const action = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
+
+    const helpResult = tryHandleHelpAction(TAG_TOOL_NAME, rawArgs, config, TAG_VARIANTS);
+    if (helpResult) return helpResult;
 
     try {
         const parsedAction = TagActionSchema.parse(rawArgs.action);

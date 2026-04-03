@@ -2,6 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
 import * as notebookApi from '../../api/notebook';
+import * as searchApi from '../../api/search';
 import type { PermissionManager } from '../permissions';
 import { createPermissionDeniedResult, type ToolResult } from './shared';
 
@@ -23,10 +24,32 @@ export interface ChildDocumentSummary {
     subFileCount?: number;
 }
 
+export interface ResultItemContext {
+    notebook?: string;
+    path?: string;
+    documentId?: string;
+}
+
+export interface ResultResolutionCache {
+    documentContextById: Map<string, Promise<ResolvedDocumentContext>>;
+    notebookByPath: Map<string, Promise<string | null>>;
+}
+
+function stripSySuffix(name: string | undefined): string | undefined {
+    return typeof name === 'string' ? name.replace(/\.sy$/, '') : undefined;
+}
+
 type PermissionRequirement = 'read' | 'write' | 'delete';
 
-function normalizePath(value: string): string {
+export function normalizePath(value: string): string {
     return value.startsWith('/') ? value : `/${value}`;
+}
+
+export function isPathWithinScope(pathValue: string, scopePath: string): boolean {
+    const normalizedPath = normalizePath(pathValue);
+    const normalizedScope = normalizePath(scopePath);
+    if (normalizedScope === '/') return true;
+    return normalizedPath === normalizedScope || normalizedPath.startsWith(`${normalizedScope}/`);
 }
 
 function extractDocumentId(pathValue: string): string {
@@ -34,7 +57,49 @@ function extractDocumentId(pathValue: string): string {
     return segment.endsWith('.sy') ? segment.slice(0, -3) : segment;
 }
 
+function escapeSqlString(value: string): string {
+    return value.replace(/'/g, "''");
+}
+
+async function resolveDocumentContextViaSql(client: SiYuanClient, id: string): Promise<ResolvedDocumentContext | null> {
+    const rows = await searchApi.querySQL(
+        client,
+        `SELECT id, root_id, box, path, hpath, content, type FROM blocks WHERE id = '${escapeSqlString(id)}' LIMIT 1`,
+    );
+    const row = Array.isArray(rows) && rows.length > 0 && rows[0] && typeof rows[0] === 'object'
+        ? rows[0] as Record<string, unknown>
+        : null;
+    if (!row) return null;
+
+    const notebook = typeof row.box === 'string' && row.box.length > 0 ? row.box : null;
+    const path = typeof row.path === 'string' && row.path.length > 0 ? row.path : null;
+    if (!notebook || !path) return null;
+
+    const rootDocumentId = typeof row.root_id === 'string' && row.root_id.length > 0
+        ? row.root_id
+        : typeof row.id === 'string' && row.id.length > 0
+            ? row.id
+            : id;
+    const hPath = typeof row.hpath === 'string' && row.hpath.length > 0 ? row.hpath : undefined;
+    const name = typeof row.content === 'string' && row.content.length > 0 ? row.content : undefined;
+
+    return {
+        documentId: rootDocumentId,
+        notebook,
+        path: normalizePath(path),
+        hPath,
+        name,
+    };
+}
+
 export async function resolveDocumentContextById(client: SiYuanClient, id: string): Promise<ResolvedDocumentContext> {
+    try {
+        const sqlContext = await resolveDocumentContextViaSql(client, id);
+        if (sqlContext) return sqlContext;
+    } catch {
+        // Fall back to the filetree/block APIs when SQL lookup is unavailable.
+    }
+
     const docInfo = await blockApi.getDocInfo(client, id);
     const rootDocumentId = docInfo.rootID || docInfo.id;
     const pathInfo = await documentApi.getPathByID(client, rootDocumentId);
@@ -44,6 +109,110 @@ export async function resolveDocumentContextById(client: SiYuanClient, id: strin
         path: normalizePath(pathInfo.path),
         name: docInfo.name,
     };
+}
+
+export function createResultResolutionCache(): ResultResolutionCache {
+    return {
+        documentContextById: new Map(),
+        notebookByPath: new Map(),
+    };
+}
+
+async function resolveDocumentContextCached(
+    client: SiYuanClient,
+    id: string,
+    cache?: ResultResolutionCache,
+): Promise<ResolvedDocumentContext> {
+    if (!cache) {
+        return resolveDocumentContextById(client, id);
+    }
+    let pending = cache.documentContextById.get(id);
+    if (!pending) {
+        pending = resolveDocumentContextById(client, id);
+        cache.documentContextById.set(id, pending);
+    }
+    return pending;
+}
+
+async function resolveNotebookForPathCached(
+    client: SiYuanClient,
+    pathValue: string,
+    cache?: ResultResolutionCache,
+): Promise<string | null> {
+    const normalizedPath = normalizePath(pathValue);
+    if (!cache) {
+        return resolveNotebookForPath(client, normalizedPath);
+    }
+    let pending = cache.notebookByPath.get(normalizedPath);
+    if (!pending) {
+        pending = resolveNotebookForPath(client, normalizedPath);
+        cache.notebookByPath.set(normalizedPath, pending);
+    }
+    return pending;
+}
+
+export async function resolveResultItemContext(
+    client: SiYuanClient,
+    item: unknown,
+    cache?: ResultResolutionCache,
+): Promise<ResultItemContext | null> {
+    if (!item || typeof item !== 'object') return null;
+
+    const typedItem = item as Record<string, unknown>;
+    const notebook = [typedItem.notebook, typedItem.box, typedItem.boxID, typedItem.notebookId]
+        .find((value): value is string => typeof value === 'string' && value.length > 0);
+    const path = [typedItem.path]
+        .find((value): value is string => typeof value === 'string' && value.length > 0);
+    const documentId = [
+        typedItem.rootID,
+        typedItem.rootId,
+        typedItem.root_id,
+        typedItem.docID,
+        typedItem.docId,
+        typedItem.id,
+    ].find((value): value is string => typeof value === 'string' && value.length > 0);
+
+    if (notebook && path) {
+        return {
+            notebook,
+            path: normalizePath(path),
+            documentId,
+        };
+    }
+
+    if (documentId) {
+        try {
+            const context = await resolveDocumentContextCached(client, documentId, cache);
+            return {
+                notebook: context.notebook,
+                path: context.path,
+                documentId: context.documentId,
+            };
+        } catch {
+            // Fall through to weaker signals.
+        }
+    }
+
+    if (path) {
+        const resolvedNotebook = await resolveNotebookForPathCached(client, path, cache);
+        if (resolvedNotebook) {
+            return {
+                notebook: notebook ?? resolvedNotebook,
+                path: normalizePath(path),
+                documentId,
+            };
+        }
+    }
+
+    if (notebook) {
+        return {
+            notebook,
+            path: path ? normalizePath(path) : undefined,
+            documentId,
+        };
+    }
+
+    return null;
 }
 
 async function checkPermissionForDocumentContext(
@@ -125,7 +294,7 @@ export async function listChildDocumentsByPath(
         notebook: child.box || response.box || notebook,
         path: normalizePath(child.path),
         hPath: child.hPath,
-        name: child.name,
+        name: stripSySuffix(child.name),
         icon: child.icon,
         subFileCount: child.subFileCount ?? child.count,
     }));

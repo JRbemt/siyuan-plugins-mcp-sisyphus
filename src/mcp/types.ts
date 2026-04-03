@@ -82,7 +82,7 @@ export const NotebookListSchema = z.object({
 export const NotebookCreateSchema = z.object({
     action: z.literal("create"),
     name: z.string().describe("Notebook name"),
-    icon: z.string().optional().describe("Optional icon for the notebook, e.g., '1f4d4' for 📔"),
+    icon: z.string().optional().describe("Optional notebook icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character."),
 });
 
 export const NotebookOpenSchema = z.object({
@@ -120,11 +120,12 @@ export const NotebookSetConfSchema = z.object({
 export const NotebookSetIconSchema = z.object({
     action: z.literal("set_icon"),
     notebook: z.string().describe("Notebook ID"),
-    icon: z.string().describe("Icon value, e.g., '1f4d4' for 📔 or custom icon path"),
+    icon: z.string().describe("Icon value. Prefer a Unicode hex code string such as '1f4d4' for 📔; raw emoji characters may not render correctly. Custom icon paths are also supported."),
 });
 
 export const NotebookGetPermissionsSchema = z.object({
     action: z.literal("get_permissions"),
+    notebook: z.string().optional().describe('Notebook ID, or "all" to return every notebook permission entry. Omit to return all notebooks.'),
 });
 
 export const NotebookSetPermissionSchema = z.object({
@@ -143,7 +144,7 @@ export const DocumentCreateSchema = z.object({
     notebook: z.string().describe("Notebook ID"),
     path: z.string().describe("Human-readable target path, must start with / (e.g., /foo/bar). Parent paths must already exist."),
     markdown: z.string().describe("Markdown content"),
-    icon: z.string().optional().describe("Optional icon for the document, e.g., '1f4d4' for 📔"),
+    icon: z.string().optional().describe("Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character."),
 });
 
 export const DocumentRenameSchema = z.object({
@@ -187,20 +188,21 @@ export const DocumentGetChildDocsSchema = z.object({
 export const DocumentSetIconSchema = z.object({
     action: z.literal("set_icon"),
     id: z.string().describe("Document ID"),
-    icon: z.string().describe("Icon value, e.g., '1f4d4' for 📔 or custom icon path"),
+    icon: z.string().describe("Icon value. Prefer a Unicode hex code string such as '1f4d4' for 📔; raw emoji characters may not render correctly. Custom icon paths are also supported."),
 });
 
 export const DocumentListTreeSchema = z.object({
     action: z.literal("list_tree"),
     notebook: z.string().describe("Notebook ID"),
     path: z.string().describe("Storage path or / for the notebook root"),
+    maxDepth: z.number().optional().describe("Max tree depth to return (default 3). Deeper nodes are collapsed to childCount."),
 });
 
 export const DocumentSearchDocsSchema = z.object({
     action: z.literal("search_docs"),
     notebook: z.string().describe("Notebook ID"),
     query: z.string().describe("Keyword to search in document titles"),
-    path: z.string().optional().describe("Optional storage path to narrow the search scope"),
+    path: z.string().optional().describe("Optional storage path to narrow the search scope after permission filtering"),
 });
 
 export const DocumentGetDocSchema = z.object({
@@ -208,6 +210,8 @@ export const DocumentGetDocSchema = z.object({
     id: z.string().describe("Document ID"),
     mode: z.enum(["markdown", "html"]).optional().describe('Return mode: "markdown" (default) or "html"'),
     size: z.number().optional().describe("Optional maximum content size hint"),
+    page: z.number().int().min(1).optional().describe('Page number for markdown pagination (1-based)'),
+    pageSize: z.number().int().min(1).max(20000).optional().describe('Characters per page for markdown pagination (default 8000)'),
 });
 
 export const DocumentCreateDailyNoteSchema = z.object({
@@ -284,6 +288,8 @@ export const BlockGetKramdownSchema = z.object({
 export const BlockGetChildrenSchema = z.object({
     action: z.literal("get_children"),
     id: z.string().describe("Block ID or document ID"),
+    page: z.number().int().min(1).optional().describe('Page number (1-based), default 1'),
+    pageSize: z.number().int().min(1).max(200).optional().describe('Items per page, default 50'),
 });
 
 export const BlockTransferRefSchema = z.object({
@@ -327,7 +333,7 @@ export const BlockDomSchema = z.object({
 
 export const BlockRecentUpdatedSchema = z.object({
     action: z.literal("recent_updated"),
-    count: z.number().optional().describe("Maximum number of recent blocks to return"),
+    count: z.number().optional().describe("Maximum number of recent readable blocks to return after permission filtering"),
 });
 
 export const BlockWordCountSchema = z.object({
@@ -377,11 +383,12 @@ export const SearchFulltextSchema = z.object({
     orderBy: z.number().optional().describe("Sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)"),
     page: z.number().optional().describe("Page number (1-based), default 1"),
     pageSize: z.number().optional().describe("Results per page, default 32, max 128"),
+    stripHtml: z.boolean().optional().describe("When true, preserves highlighted HTML while adding plain-text fields for easier downstream parsing"),
 });
 
 export const SearchQuerySqlSchema = z.object({
     action: z.literal("query_sql"),
-    stmt: z.string().describe("SQL SELECT statement to execute against the blocks/spans/assets tables"),
+    stmt: z.string().describe("SQL SELECT statement to execute against the blocks/spans/assets tables; returned rows are permission-filtered"),
 });
 
 export const SearchTagSchema = z.object({
@@ -440,7 +447,7 @@ export const SystemChangelogSchema = z.object({
 export const SystemConfSchema = z.object({
     action: z.literal("conf"),
     mode: z.enum(["summary", "get"]).optional().describe('Read mode: "summary" returns a navigable overview, "get" reads a specific key path'),
-    keyPath: z.string().optional().describe('Dot/bracket path to a specific config field, e.g. "appearance.themeMode" or "account[0]"'),
+    keyPath: z.string().optional().describe('Dot/bracket path to a specific config field, e.g. "conf.appearance.mode" or "conf.langs[0]"'),
     maxDepth: z.number().int().min(0).max(5).optional().describe('Maximum object traversal depth for summary/get responses'),
     maxItems: z.number().int().min(1).max(100).optional().describe('Maximum keys/items to include per level'),
 });
