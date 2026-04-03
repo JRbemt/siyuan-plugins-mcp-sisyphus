@@ -57,8 +57,8 @@ function extractDocumentId(pathValue: string): string {
     return segment.endsWith('.sy') ? segment.slice(0, -3) : segment;
 }
 
-function escapeSqlString(value: string): string {
-    return value.replace(/'/g, "''");
+export function escapeSqlString(value: string): string {
+    return value.replace(/\0/g, '').replace(/'/g, "''");
 }
 
 async function resolveDocumentContextViaSql(client: SiYuanClient, id: string): Promise<ResolvedDocumentContext | null> {
@@ -111,6 +111,16 @@ export async function resolveDocumentContextById(client: SiYuanClient, id: strin
     };
 }
 
+const CACHE_MAX_SIZE = 500;
+
+function boundedSet<K, V>(map: Map<K, V>, key: K, value: V): void {
+    if (map.size >= CACHE_MAX_SIZE) {
+        const firstKey = map.keys().next().value;
+        if (firstKey !== undefined) map.delete(firstKey);
+    }
+    map.set(key, value);
+}
+
 export function createResultResolutionCache(): ResultResolutionCache {
     return {
         documentContextById: new Map(),
@@ -129,7 +139,7 @@ async function resolveDocumentContextCached(
     let pending = cache.documentContextById.get(id);
     if (!pending) {
         pending = resolveDocumentContextById(client, id);
-        cache.documentContextById.set(id, pending);
+        boundedSet(cache.documentContextById, id, pending);
     }
     return pending;
 }
@@ -146,7 +156,7 @@ async function resolveNotebookForPathCached(
     let pending = cache.notebookByPath.get(normalizedPath);
     if (!pending) {
         pending = resolveNotebookForPath(client, normalizedPath);
-        cache.notebookByPath.set(normalizedPath, pending);
+        boundedSet(cache.notebookByPath, normalizedPath, pending);
     }
     return pending;
 }

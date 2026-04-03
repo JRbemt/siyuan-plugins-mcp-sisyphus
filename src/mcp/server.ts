@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { SiYuanClient } from '../api/client';
-import { buildDefaultToolConfig, normalizeToolConfig, TOOL_CATEGORIES, type ToolCategory, type ToolConfig } from './config';
+import { buildDefaultToolConfig, formatDangerousActionsList, normalizeToolConfig, TOOL_CATEGORIES, type ToolCategory, type ToolConfig } from './config';
 import { PermissionManager } from './permissions';
 import { listHelpResources, listHelpResourceTemplates, readHelpResource } from './resources';
 import { callBlockTool, listBlockTools } from './tools/block';
@@ -18,7 +18,9 @@ import { callTagTool, listTagTools } from './tools/tag';
 
 const PLUGIN_CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
 
-const SERVER_INSTRUCTIONS = `
+function buildServerInstructions(): string {
+    const dangerousActionsList = formatDangerousActionsList().join('\n');
+    return `
 ## Help resources (progressive disclosure)
 
 Each tool exposes common actions in its description. For detailed help on any action (including advanced ones), read:
@@ -32,15 +34,14 @@ Each tool exposes common actions in its description. For detailed help on any ac
 Before calling any of the following actions, you MUST clearly describe the action to the user and wait for explicit confirmation. Do not call them without user confirmation.
 
 **Actions that require confirmation:**
-- notebook(action="remove")
-- document(action="remove"), document(action="move")
-- block(action="delete"), block(action="move")
-- tag(action="remove")
-- file(action="export_resources", outputPath=...)
+${dangerousActionsList}
+- \`file(action="export_resources", outputPath=...)\`
 
 Flow: State "I will do X. Proceed?" and only call the tool after the user explicitly agrees.
 
 Additional rule:
+- file(action="upload_asset") reads a local file path from the local filesystem and uploads it into SiYuan assets. Treat this as high-risk.
+- If file(action="upload_asset") targets a file larger than the configured large-upload threshold (10 MB by default), you MUST stop the current operation, tell the user the file is too large to continue automatically, and only retry after explicit confirmation using confirmLargeFile=true.
 - file(action="export_resources") without outputPath only asks SiYuan to generate a ZIP in its managed temp area.
 - file(action="export_resources", outputPath=...) writes a file to the local filesystem and MUST be treated as high-risk even though the action itself is otherwise read-oriented.
 
@@ -58,6 +59,9 @@ Tag creation semantics:
 - To create a real SiYuan tag in block markdown, use #标签# with both leading and trailing # characters.
 - Example: block(action="update", dataType="markdown", data="#假期# #回家#")
 `;
+}
+
+const SERVER_INSTRUCTIONS = buildServerInstructions();
 
 
 async function tryReadConfigFromAPI(client: SiYuanClient): Promise<ToolConfig | null> {

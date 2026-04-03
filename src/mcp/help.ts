@@ -22,6 +22,7 @@ export const DOCUMENT_GUIDANCE: string[] = [
     'Other document actions that use notebook + path expect storage paths returned by document(action="get_path").',
     'A safe path-based workflow is get_path -> rename/remove/move/get_hpath.',
     'document(action="get_child_blocks") and document(action="get_child_docs") return direct children for a document ID.',
+    'document(action="set_cover") and document(action="clear_cover") are semantic wrappers around the document root block\'s "title-img" attribute.',
     'document(action="search_docs") remains title-based, but MCP now post-filters results by notebook permission and optional storage path scope.',
     'For recently created documents, get_ids may briefly lag behind create because it depends on SiYuan indexing; retry if needed.',
 ];
@@ -35,7 +36,8 @@ export const BLOCK_GUIDANCE: string[] = [
 ];
 
 export const FILE_GUIDANCE: string[] = [
-    'file(action="upload_asset") expects a base64-encoded file payload.',
+    'file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution.',
+    'If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.',
     'file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.',
     'file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.',
 ];
@@ -71,6 +73,8 @@ export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
     get_child_docs: 'Use a document ID. Returns direct child documents only.',
     set_icon: 'Use a document ID + icon. Prefer a Unicode hex code string such as "1f4d4" for 📔; raw emoji characters may not render correctly.',
+    set_cover: 'Use a document ID + source, where source is either an http(s) URL or a SiYuan asset path like /assets/foo.png. MCP stores it in the "title-img" attribute.',
+    clear_cover: 'Use a document ID to clear the document cover by resetting the "title-img" attribute.',
     list_tree: 'Use notebook + path, where path is a storage path such as / or /20240318112233-abc123.sy.',
     search_docs: 'Use notebook + query, and optionally path as a storage-path scope. Search is title-based in SiYuan; MCP then filters by notebook permission and optional storage path.',
     get_doc: 'Use a document ID. mode="markdown" returns clean Markdown content and supports page/pageSize for long documents; mode="html" uses the current focus view. For structured reading, prefer get_child_blocks.',
@@ -96,7 +100,7 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
 };
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
-    upload_asset: 'Use assetsDirPath + file + fileName, where file is base64-encoded.',
+    upload_asset: 'Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.',
     export_resources: 'Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation.',
 };
 

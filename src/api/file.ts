@@ -1,6 +1,5 @@
 import { SiYuanClient } from './client';
 import type {
-    IReqUpload,
     IReqRenderTemplate,
     IReqRenderSprig,
     IReqExportMdContent,
@@ -20,19 +19,16 @@ import type {
 export async function uploadAsset(
     client: SiYuanClient,
     assetsDirPath: string,
-    file: File,
-    fileName?: string
+    fileContent: Uint8Array,
+    fileName: string,
 ): Promise<{ errFiles: string[]; succMap: { [key: string]: string } }> {
     const formData = new FormData();
+    const file = new File([fileContent], fileName);
     formData.append('assetsDirPath', assetsDirPath);
-    formData.append('file[]', file, fileName || file.name);
+    formData.append('file[]', file, fileName);
 
-    const url = `${client['baseUrl']}/api/asset/upload`;
-
-    const headers: Record<string, string> = {};
-    if (client['token']) {
-        headers['Authorization'] = `Token ${client['token']}`;
-    }
+    const url = `${client.getBaseUrl()}/api/asset/upload`;
+    const headers = client.getAuthHeaders();
 
     const response = await fetch(url, {
         method: 'POST',

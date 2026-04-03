@@ -191,6 +191,17 @@ export const DocumentSetIconSchema = z.object({
     icon: z.string().describe("Icon value. Prefer a Unicode hex code string such as '1f4d4' for 📔; raw emoji characters may not render correctly. Custom icon paths are also supported."),
 });
 
+export const DocumentSetCoverSchema = z.object({
+    action: z.literal("set_cover"),
+    id: z.string().describe("Document ID"),
+    source: z.string().describe("Cover image source. Accepts http(s) URLs or SiYuan asset paths like /assets/foo.png."),
+});
+
+export const DocumentClearCoverSchema = z.object({
+    action: z.literal("clear_cover"),
+    id: z.string().describe("Document ID"),
+});
+
 export const DocumentListTreeSchema = z.object({
     action: z.literal("list_tree"),
     notebook: z.string().describe("Notebook ID"),
@@ -344,8 +355,8 @@ export const BlockWordCountSchema = z.object({
 export const FileUploadAssetSchema = z.object({
     action: z.literal("upload_asset"),
     assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),
-    file: z.string().describe("Base64 encoded file content"),
-    fileName: z.string().describe("Original file name"),
+    localFilePath: z.string().describe("Local file path to read and upload into the assets directory"),
+    confirmLargeFile: z.boolean().optional().describe("Set to true only after the user explicitly confirms uploading a file larger than the configured safety threshold."),
 });
 
 export const FileRenderTemplateSchema = z.object({

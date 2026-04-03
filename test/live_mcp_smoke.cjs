@@ -173,7 +173,7 @@ async function assertDefaultToolList() {
         assert.match(descriptions.notebook, /Additional actions:/);
         assert.match(descriptions.notebook, /get_permissions/);
         assert.match(descriptions.document, /Common actions: create, rename, get_path, get_hpath, get_ids, get_child_blocks, get_child_docs, search_docs, get_doc/);
-        assert.match(descriptions.document, /Additional actions: move, set_icon, list_tree, create_daily_note/);
+        assert.match(descriptions.document, /Additional actions: move, set_icon, set_cover, clear_cover, list_tree, create_daily_note/);
         assert.match(descriptions.document, /Common actions: .*get_doc/);
         assert.match(descriptions.document, /Additional actions: .*list_tree/);
         assert.match(descriptions.document, /rename: id, title \| notebook, path, title/);
@@ -187,6 +187,7 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /Read siyuan:\/\/help\/action\/block\/\{action\} for details/);
         assert.match(descriptions.file, /Common actions: upload_asset, export_md/);
         assert.match(descriptions.file, /Additional actions: render_template, render_sprig, export_resources/);
+        assert.match(descriptions.file, /confirmLargeFile/);
         assert.match(descriptions.file, /Read siyuan:\/\/help\/action\/file\/\{action\} for details/);
         assert.match(descriptions.search, /fulltext, query_sql, search_tag, get_backlinks, get_backmentions/);
         assert.match(descriptions.search, /Common actions: fulltext, query_sql, search_tag, get_backlinks, get_backmentions/);
@@ -575,14 +576,17 @@ async function runLiveSmoke() {
             assert.equal(getDocMarkdownPaged.pageSize, 20);
             assert.equal(typeof getDocMarkdownPaged.pageCount, 'number');
 
+            const localUploadPath = path.join(process.cwd(), 'tmp', 'mcp-smoke-export.txt');
+            fs.mkdirSync(path.dirname(localUploadPath), { recursive: true });
+            fs.writeFileSync(localUploadPath, 'mcp-smoke-export');
             const uploadAsset = (await callToolJson(client, 'file', {
                 action: 'upload_asset',
                 assetsDirPath: '/assets/',
-                fileName: 'mcp-smoke-export.txt',
-                file: Buffer.from('mcp-smoke-export').toString('base64'),
+                localFilePath: localUploadPath,
             })).json;
             const uploadedAssetPath = Object.values(uploadAsset.succMap ?? {})[0];
             assert.equal(typeof uploadedAssetPath, 'string');
+            assert.equal(uploadAsset.localFilePath, localUploadPath);
 
             const exportResourcesAbsolute = (await callToolJson(client, 'file', {
                 action: 'export_resources',

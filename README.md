@@ -73,6 +73,7 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 
 ## Timeline
 
+- `v0.1.11`: Adds document cover actions, switches asset uploads to local-path flows with large-file confirmation, and refreshes docs plus tests
 - `v0.1.10`: Refines aggregated tool behavior, tightens permission/path/help details, and refreshes docs plus test coverage
 - `v0.1.9`: Expands notebook permissions to `none` / `r` / `rw` / `rwd`, improves move/export behaviors, and strengthens MCP docs and test coverage
 - `v0.1.8`: Adds notebook and document icon support and updates the aggregated MCP tool surface back to 7 tools
@@ -94,6 +95,7 @@ The server instructions require explicit user confirmation before these actions 
 - `document(action="move")`
 - `block(action="delete")`
 - `block(action="move")`
+- `file(action="upload_asset")`
 - `tag(action="remove")`
 
 If your client shows MCP instructions, the model should ask for confirmation before executing them. This is an instruction-layer safety rule, not a server-side modal dialog guarantee.
@@ -101,6 +103,7 @@ If your client shows MCP instructions, the model should ask for confirmation bef
 In the default fallback config, `document(action="move")` and `block(action="move")` are still exposed. They are not safe to call without confirmation just because they are enabled.
 
 Also note:
+- `file(action="upload_asset")` on files larger than the configured threshold (`10 MB` by default) must stop the current operation and ask the user before retrying with `confirmLargeFile=true`.
 
 - `document(action="move", fromPaths + toNotebook + toPath)` expects `toPath` to be the storage path of an existing destination document.
 - `block(action="move")` returns a structured success object from MCP, even though the underlying SiYuan API may return `null`.
@@ -167,6 +170,8 @@ Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 | `remove` | Remove a document by ID or storage path |
 | `move` | Move documents by ID or storage path |
 | `set_icon` | Set document or folder icon; prefer Unicode hex strings like `1f4d4` over raw emoji characters |
+| `set_cover` | Set the document cover image, preferably from an `http(s)` URL and secondarily from a `/assets/...` path |
+| `clear_cover` | Clear the document cover image |
 | `get_path` | Get storage path by document ID |
 | `get_hpath` | Get human-readable path by ID or storage path |
 | `get_ids` | Get document IDs by human-readable path |
@@ -178,6 +183,8 @@ Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 | `create_daily_note` | Create or return today’s daily note for a notebook |
 
 Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/Weekly Note`). `rename`, `remove`, `move`, `get_hpath`, `list_tree`, and `search_docs.path` use storage paths returned by `get_path`. Use `get_ids` when you need to resolve a human-readable path to a document ID. Right after `create`, `get_ids` may briefly lag because it depends on SiYuan indexing.
+
+Cover semantics: `set_cover` and `clear_cover` are semantic wrappers around the document root block's `title-img` attribute. Prefer passing a direct image URL to `set_cover`; only upload into `/assets/...` first when the user explicitly wants the image stored in SiYuan. To inspect the raw stored value, use `block(action="get_attrs", id=docId)`.
 
 ### `block`
 
@@ -203,7 +210,7 @@ Path semantics: `create` and `get_ids` use human-readable paths (e.g., `/Inbox/W
 
 | Action | Description |
 |--------|-------------|
-| `upload_asset` | Upload a file asset |
+| `upload_asset` | Read a local file path and upload that file asset (requires confirmation; files larger than the configured threshold, `10 MB` by default, must stop and ask the user before retrying with `confirmLargeFile=true`) |
 | `render_template` | Render a template with document context |
 | `render_sprig` | Render a Sprig template |
 | `export_md` | Export document as Markdown |

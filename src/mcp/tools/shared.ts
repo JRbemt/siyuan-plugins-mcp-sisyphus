@@ -378,6 +378,35 @@ export function applyTruncation<T>(
     };
 }
 
+export interface PaginationResult<T> {
+    items: T[];
+    total: number;
+    page: number;
+    pageSize: number;
+    pageCount: number;
+    showing: number;
+    truncated: boolean;
+    hasNextPage: boolean;
+}
+
+export function paginate<T>(items: T[], page: number, pageSize: number): PaginationResult<T> {
+    const total = items.length;
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const normalizedPage = Math.min(page, pageCount);
+    const start = (normalizedPage - 1) * pageSize;
+    const paged = items.slice(start, start + pageSize);
+    return {
+        items: paged,
+        total,
+        page: normalizedPage,
+        pageSize,
+        pageCount,
+        showing: paged.length,
+        truncated: pageCount > 1,
+        hasNextPage: normalizedPage < pageCount,
+    };
+}
+
 export function createJsonResult(value: unknown): ToolResult {
     return {
         content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],

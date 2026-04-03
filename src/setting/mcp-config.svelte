@@ -63,6 +63,8 @@
                 { key: "get_child_blocks", title: "Get Child Blocks", description: "Get direct child blocks by document ID." },
                 { key: "get_child_docs", title: "Get Child Documents", description: "Get direct child documents by document ID." },
                 { key: "set_icon", title: "Set Document Icon", description: "Set the icon for a document or folder." },
+                { key: "set_cover", title: "Set Document Cover", description: "Set the document cover image from a URL or SiYuan asset path." },
+                { key: "clear_cover", title: "Clear Document Cover", description: "Clear the document cover image." },
                 { key: "list_tree", title: "List Document Tree", description: "List the nested document tree under a notebook path." },
                 { key: "search_docs", title: "Search Documents", description: "Search documents by title keyword." },
                 { key: "get_doc", title: "Get Document Content", description: "Get document content and metadata by document ID." },
@@ -100,7 +102,7 @@
             icon: "📁",
             groupKey: "Files",
             actions: [
-                { key: "upload_asset", title: "Upload Asset", description: "Upload a file to the assets directory." },
+                { key: "upload_asset", title: "Upload Asset", description: "Read a local file path and upload that file to the assets directory. Files larger than the configured threshold must stop and ask the user before retrying with confirmLargeFile=true." },
                 { key: "render_template", title: "Render Template", description: "Render a template with document context." },
                 { key: "render_sprig", title: "Render Sprig", description: "Render a Sprig template." },
                 { key: "export_md", title: "Export Markdown Content", description: "Export document content as Markdown." },
@@ -193,18 +195,36 @@
         description: getLabel(`${definition.category}_tool_desc`, `Expose the grouped ${definition.category} tool to MCP clients.`),
     });
 
-    const buildActionItems = (definition: GroupDefinition): ISettingItem[] => definition.actions.map((action) => {
+    const buildUploadAssetThresholdItem = (): ISettingItemCore => ({
+        type: "number",
+        key: "file__setting__uploadLargeFileThresholdMB",
+        value: config.file.uploadLargeFileThresholdMB,
+        title: getLabel("file_setting_uploadLargeFileThresholdMB", "Large Upload Threshold"),
+        description: getLabel("desc_file_setting_uploadLargeFileThresholdMB", "Files larger than this threshold must stop and ask the user before retrying with confirmLargeFile=true."),
+        inputCompact: true,
+        unit: "MB",
+    });
+
+    const buildActionItems = (definition: GroupDefinition): ISettingItem[] => definition.actions.flatMap((action) => {
         const baseTitle = getLabel(`${definition.category}_action_${action.key}`, action.title);
         const baseDescription = getLabel(`desc_${definition.category}_action_${action.key}`, action.description);
         const dangerous = isDangerousAction(definition.category, action.key);
-
-        return {
+        const uploadAssetEnabled = definition.category === "file" && action.key === "upload_asset" && config.file.actions.upload_asset;
+        const items: ISettingItem[] = [{
             type: "checkbox",
             key: `${definition.category}__action__${action.key}`,
             value: config[definition.category].actions[action.key as keyof typeof config[typeof definition.category]["actions"]],
             title: dangerous ? getDangerTitle(baseTitle) : baseTitle,
             description: dangerous ? getDangerDescription(baseDescription) : baseDescription,
-        };
+            ...(definition.category === "file" && action.key === "upload_asset"
+                ? { layout: "inline" as const }
+                : {}),
+            ...(definition.category === "file" && action.key === "upload_asset"
+                ? { children: uploadAssetEnabled ? [buildUploadAssetThresholdItem()] : [] }
+                : {}),
+        }];
+
+        return items;
     });
 
     function buildPermItems(): ISettingItem[] {
@@ -340,6 +360,19 @@
         if (key.endsWith("__enabled")) {
             const category = key.replace("__enabled", "") as ToolCategory;
             setCategoryEnabled(category, Boolean(value));
+            await persistConfig();
+            return;
+        }
+
+        if (key === "file__setting__uploadLargeFileThresholdMB") {
+            const numeric = Number(value);
+            config = {
+                ...config,
+                file: {
+                    ...config.file,
+                    uploadLargeFileThresholdMB: Number.isFinite(numeric) ? Math.max(1, Math.min(1024, Math.floor(numeric))) : config.file.uploadLargeFileThresholdMB,
+                },
+            };
             await persistConfig();
             return;
         }

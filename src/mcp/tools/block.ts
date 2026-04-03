@@ -29,7 +29,7 @@ import {
 } from '../types';
 import { ensurePermissionForDocumentId } from './context';
 import { filterItemsByPermission } from './search';
-import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
+import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, paginate, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const BLOCK_TOOL_NAME = 'block';
 
@@ -253,6 +253,244 @@ function createUpdateResult(
     return createJsonResult(payload);
 }
 
+interface BlockHandlerContext {
+    client: SiYuanClient;
+    permMgr: PermissionManager;
+    rawArgs: Record<string, unknown>;
+}
+
+type BlockActionHandler = (ctx: BlockHandlerContext) => Promise<ToolResult>;
+
+const handleInsert: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockInsertSchema.parse(rawArgs);
+    const refId = parsed.nextID || parsed.previousID || parsed.parentID;
+    if (refId) {
+        const { denied } = await ensurePermissionForDocumentId(client, permMgr, refId, 'write');
+        if (denied) return denied;
+    }
+    const result = await blockApi.insertBlock(client, parsed.dataType, parsed.data, parsed.nextID, parsed.previousID, parsed.parentID);
+    return createSlimWriteResult(result, {
+        action: 'insert',
+        dataType: parsed.dataType,
+        parentID: parsed.parentID,
+        previousID: parsed.previousID,
+        nextID: parsed.nextID,
+    });
+};
+
+const handlePrepend: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockPrependSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+    if (denied) return denied;
+    const result = await blockApi.prependBlock(client, parsed.dataType, parsed.data, parsed.parentID);
+    return createSlimWriteResult(result, { action: 'prepend', dataType: parsed.dataType, parentID: parsed.parentID });
+};
+
+const handleAppend: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockAppendSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+    if (denied) return denied;
+    const result = await blockApi.appendBlock(client, parsed.dataType, parsed.data, parsed.parentID);
+    return createSlimWriteResult(result, { action: 'append', dataType: parsed.dataType, parentID: parsed.parentID });
+};
+
+const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockUpdateSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    if (denied) return denied;
+    const result = await blockApi.updateBlock(client, parsed.dataType, parsed.data, parsed.id);
+    return createUpdateResult(result, { id: parsed.id, dataType: parsed.dataType, data: parsed.data });
+};
+
+const handleDelete: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockDeleteSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
+    if (denied) return denied;
+    await blockApi.deleteBlock(client, parsed.id);
+    return createJsonResult({ success: true, id: parsed.id });
+};
+
+const handleMove: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockMoveSchema.parse(rawArgs);
+    const source = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    if (source.denied) return source.denied;
+    if (parsed.parentID) {
+        const destination = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+        if (destination.denied) return destination.denied;
+    }
+    if (parsed.previousID) {
+        const sibling = await ensurePermissionForDocumentId(client, permMgr, parsed.previousID, 'write');
+        if (sibling.denied) return sibling.denied;
+    }
+    const result = await blockApi.moveBlock(client, parsed.id, parsed.previousID, parsed.parentID);
+    return createWriteSuccessResult({
+        id: parsed.id,
+        ...(parsed.previousID ? { previousID: parsed.previousID } : {}),
+        ...(parsed.parentID ? { parentID: parsed.parentID } : {}),
+    }, result);
+};
+
+const handleFold: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockFoldSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    if (denied) return denied;
+    await blockApi.foldBlock(client, parsed.id);
+    return createJsonResult({ success: true, id: parsed.id });
+};
+
+const handleUnfold: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockUnfoldSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    if (denied) return denied;
+    await blockApi.unfoldBlock(client, parsed.id);
+    return createJsonResult({ success: true, id: parsed.id });
+};
+
+const handleGetKramdown: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockGetKramdownSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const result = normalizeKramdownResult(await blockApi.getBlockKramdown(client, parsed.id));
+    return createJsonResult(result);
+};
+
+const handleGetChildren: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockGetChildrenSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const result = await blockApi.getChildBlocks(client, parsed.id);
+    const children = Array.isArray(result) ? result : [];
+    const paged = paginate(children, parsed.page ?? 1, parsed.pageSize ?? 50);
+    return createJsonResult({
+        children: paged.items,
+        totalChildren: paged.total,
+        page: paged.page,
+        pageSize: paged.pageSize,
+        pageCount: paged.pageCount,
+        showing: paged.showing,
+        ...(paged.truncated ? {
+            truncated: true,
+            hasNextPage: paged.hasNextPage,
+            hint: 'Use page/pageSize to paginate. For focused reads, use block(action="get_kramdown") or search(action="query_sql") with a parent_id filter.',
+        } : {}),
+    });
+};
+
+const handleTransferRef: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockTransferRefSchema.parse(rawArgs);
+    const source = await ensurePermissionForDocumentId(client, permMgr, parsed.fromID, 'write');
+    if (source.denied) return source.denied;
+    const target = await ensurePermissionForDocumentId(client, permMgr, parsed.toID, 'write');
+    if (target.denied) return target.denied;
+    await blockApi.transferBlockRef(client, parsed.fromID, parsed.toID, parsed.refIDs);
+    return createJsonResult({ success: true, fromID: parsed.fromID, toID: parsed.toID });
+};
+
+const handleSetAttrs: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockSetAttrsSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    if (denied) return denied;
+    await attributeApi.setBlockAttrs(client, parsed.id, parsed.attrs);
+    return createJsonResult({ success: true, id: parsed.id, attrs: parsed.attrs });
+};
+
+const handleGetAttrs: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockGetAttrsSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const result = await attributeApi.getBlockAttrs(client, parsed.id);
+    return createJsonResult(result);
+};
+
+const handleExists: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockExistsSchema.parse(rawArgs);
+    try {
+        const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+        if (denied) return denied;
+    } catch (err) {
+        if (isMissingBlockError(err)) {
+            return createJsonResult({ id: parsed.id, exists: false });
+        }
+        throw err;
+    }
+    const exists = await blockApi.checkBlockExist(client, parsed.id);
+    return createJsonResult({ id: parsed.id, exists });
+};
+
+const handleInfo: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockInfoSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const result = await blockApi.getBlockInfo(client, parsed.id);
+    return createJsonResult(result);
+};
+
+const handleBreadcrumb: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockBreadcrumbSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const result = await blockApi.getBlockBreadcrumb(client, parsed.id, parsed.excludeTypes);
+    return createJsonResult(result);
+};
+
+const handleDom: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockDomSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const result = await blockApi.getBlockDOM(client, parsed.id);
+    return createJsonResult(result);
+};
+
+const handleRecentUpdated: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockRecentUpdatedSchema.parse(rawArgs);
+    const result = await blockApi.getRecentUpdatedBlocks(client);
+    const items = Array.isArray(result) ? result : [];
+    const filtered = await filterItemsByPermission(client, items, permMgr);
+    const count = typeof parsed.count === 'number' ? parsed.count : undefined;
+    const truncatedItems = typeof count === 'number' ? filtered.items.slice(0, count) : filtered.items;
+    return createJsonResult({
+        items: truncatedItems,
+        count: truncatedItems.length,
+        ...(filtered.removedCount > 0 ? {
+            partial: true,
+            filteredOutCount: filtered.removedCount,
+            reason: 'permission_filtered',
+        } : {}),
+    });
+};
+
+const handleWordCount: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = BlockWordCountSchema.parse(rawArgs);
+    for (const id of parsed.ids) {
+        const { denied } = await ensurePermissionForDocumentId(client, permMgr, id, 'read');
+        if (denied) return denied;
+    }
+    const result = await blockApi.getBlocksWordCount(client, parsed.ids);
+    return createJsonResult(result);
+};
+
+const BLOCK_ACTION_HANDLERS: Record<BlockAction, BlockActionHandler> = {
+    insert: handleInsert,
+    prepend: handlePrepend,
+    append: handleAppend,
+    update: handleUpdate,
+    delete: handleDelete,
+    move: handleMove,
+    fold: handleFold,
+    unfold: handleUnfold,
+    get_kramdown: handleGetKramdown,
+    get_children: handleGetChildren,
+    transfer_ref: handleTransferRef,
+    set_attrs: handleSetAttrs,
+    get_attrs: handleGetAttrs,
+    exists: handleExists,
+    info: handleInfo,
+    breadcrumb: handleBreadcrumb,
+    dom: handleDom,
+    recent_updated: handleRecentUpdated,
+    word_count: handleWordCount,
+};
+
 export async function callBlockTool(
     client: SiYuanClient,
     args: Record<string, unknown> | undefined,
@@ -271,261 +509,8 @@ export async function callBlockTool(
             return createDisabledActionResult(BLOCK_TOOL_NAME, parsedAction);
         }
 
-        switch (parsedAction) {
-            case 'insert': {
-                const parsed = BlockInsertSchema.parse(rawArgs);
-                const refId = parsed.nextID || parsed.previousID || parsed.parentID;
-                if (refId) {
-                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, refId, 'write');
-                    if (denied) {
-                        return denied;
-                    }
-                }
-                const result = await blockApi.insertBlock(client, parsed.dataType, parsed.data, parsed.nextID, parsed.previousID, parsed.parentID);
-                return createSlimWriteResult(result, {
-                    action: 'insert',
-                    dataType: parsed.dataType,
-                    parentID: parsed.parentID,
-                    previousID: parsed.previousID,
-                    nextID: parsed.nextID,
-                });
-            }
-            case 'prepend': {
-                const parsed = BlockPrependSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
-                if (denied) {
-                    return denied;
-                }
-                const result = await blockApi.prependBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-                return createSlimWriteResult(result, {
-                    action: 'prepend',
-                    dataType: parsed.dataType,
-                    parentID: parsed.parentID,
-                });
-            }
-            case 'append': {
-                const parsed = BlockAppendSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
-                if (denied) {
-                    return denied;
-                }
-                const result = await blockApi.appendBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-                return createSlimWriteResult(result, {
-                    action: 'append',
-                    dataType: parsed.dataType,
-                    parentID: parsed.parentID,
-                });
-            }
-            case 'update': {
-                const parsed = BlockUpdateSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
-                if (denied) {
-                    return denied;
-                }
-                const result = await blockApi.updateBlock(client, parsed.dataType, parsed.data, parsed.id);
-                return createUpdateResult(result, {
-                    id: parsed.id,
-                    dataType: parsed.dataType,
-                    data: parsed.data,
-                });
-            }
-            case 'delete': {
-                const parsed = BlockDeleteSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
-                if (denied) {
-                    return denied;
-                }
-                await blockApi.deleteBlock(client, parsed.id);
-                return createJsonResult({ success: true, id: parsed.id });
-            }
-            case 'move': {
-                const parsed = BlockMoveSchema.parse(rawArgs);
-                const source = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
-                if (source.denied) {
-                    return source.denied;
-                }
-                if (parsed.parentID) {
-                    const destination = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
-                    if (destination.denied) {
-                        return destination.denied;
-                    }
-                }
-                if (parsed.previousID) {
-                    const sibling = await ensurePermissionForDocumentId(client, permMgr, parsed.previousID, 'write');
-                    if (sibling.denied) {
-                        return sibling.denied;
-                    }
-                }
-                const result = await blockApi.moveBlock(client, parsed.id, parsed.previousID, parsed.parentID);
-                return createWriteSuccessResult({
-                    id: parsed.id,
-                    ...(parsed.previousID ? { previousID: parsed.previousID } : {}),
-                    ...(parsed.parentID ? { parentID: parsed.parentID } : {}),
-                }, result);
-            }
-            case 'fold': {
-                const parsed = BlockFoldSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
-                if (denied) {
-                    return denied;
-                }
-                await blockApi.foldBlock(client, parsed.id);
-                return createJsonResult({ success: true, id: parsed.id });
-            }
-            case 'unfold': {
-                const parsed = BlockUnfoldSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
-                if (denied) {
-                    return denied;
-                }
-                await blockApi.unfoldBlock(client, parsed.id);
-                return createJsonResult({ success: true, id: parsed.id });
-            }
-            case 'get_kramdown': {
-                const parsed = BlockGetKramdownSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                if (denied) {
-                    return denied;
-                }
-                const result = normalizeKramdownResult(await blockApi.getBlockKramdown(client, parsed.id));
-                return createJsonResult(result);
-            }
-            case 'get_children': {
-                const parsed = BlockGetChildrenSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                if (denied) {
-                    return denied;
-                }
-                const result = await blockApi.getChildBlocks(client, parsed.id);
-                const children = Array.isArray(result) ? result : [];
-                const page = parsed.page ?? 1;
-                const pageSize = parsed.pageSize ?? 50;
-                const totalChildren = children.length;
-                const pageCount = Math.max(1, Math.ceil(totalChildren / pageSize));
-                const normalizedPage = Math.min(page, pageCount);
-                const start = (normalizedPage - 1) * pageSize;
-                const pagedChildren = children.slice(start, start + pageSize);
-                return createJsonResult({
-                    children: pagedChildren,
-                    totalChildren,
-                    page: normalizedPage,
-                    pageSize,
-                    pageCount,
-                    showing: pagedChildren.length,
-                    ...(pageCount > 1 ? {
-                        truncated: true,
-                        hasNextPage: normalizedPage < pageCount,
-                        hint: 'Use page/pageSize to paginate. For focused reads, use block(action="get_kramdown") or search(action="query_sql") with a parent_id filter.',
-                    } : {}),
-                });
-            }
-            case 'transfer_ref': {
-                const parsed = BlockTransferRefSchema.parse(rawArgs);
-                const source = await ensurePermissionForDocumentId(client, permMgr, parsed.fromID, 'write');
-                if (source.denied) {
-                    return source.denied;
-                }
-                const target = await ensurePermissionForDocumentId(client, permMgr, parsed.toID, 'write');
-                if (target.denied) {
-                    return target.denied;
-                }
-                await blockApi.transferBlockRef(client, parsed.fromID, parsed.toID, parsed.refIDs);
-                return createJsonResult({ success: true, fromID: parsed.fromID, toID: parsed.toID });
-            }
-            case 'set_attrs': {
-                const parsed = BlockSetAttrsSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
-                if (denied) {
-                    return denied;
-                }
-                await attributeApi.setBlockAttrs(client, parsed.id, parsed.attrs);
-                return createJsonResult({ success: true, id: parsed.id, attrs: parsed.attrs });
-            }
-            case 'get_attrs': {
-                const parsed = BlockGetAttrsSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                if (denied) {
-                    return denied;
-                }
-                const result = await attributeApi.getBlockAttrs(client, parsed.id);
-                return createJsonResult(result);
-            }
-            case 'exists': {
-                const parsed = BlockExistsSchema.parse(rawArgs);
-                try {
-                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                    if (denied) {
-                        return denied;
-                    }
-                } catch (err) {
-                    if (isMissingBlockError(err)) {
-                        return createJsonResult({ id: parsed.id, exists: false });
-                    }
-                    throw err;
-                }
-                const exists = await blockApi.checkBlockExist(client, parsed.id);
-                return createJsonResult({ id: parsed.id, exists });
-            }
-            case 'info': {
-                const parsed = BlockInfoSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                if (denied) {
-                    return denied;
-                }
-                const result = await blockApi.getBlockInfo(client, parsed.id);
-                return createJsonResult(result);
-            }
-            case 'breadcrumb': {
-                const parsed = BlockBreadcrumbSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                if (denied) {
-                    return denied;
-                }
-                const result = await blockApi.getBlockBreadcrumb(client, parsed.id, parsed.excludeTypes);
-                return createJsonResult(result);
-            }
-            case 'dom': {
-                const parsed = BlockDomSchema.parse(rawArgs);
-                const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
-                if (denied) {
-                    return denied;
-                }
-                const result = await blockApi.getBlockDOM(client, parsed.id);
-                return createJsonResult(result);
-            }
-            case 'recent_updated': {
-                const parsed = BlockRecentUpdatedSchema.parse(rawArgs);
-                const result = await blockApi.getRecentUpdatedBlocks(client);
-                const items = Array.isArray(result) ? result : [];
-                const filtered = await filterItemsByPermission(client, items, permMgr);
-                const count = typeof parsed.count === 'number' ? parsed.count : undefined;
-                const truncatedItems = typeof count === 'number' ? filtered.items.slice(0, count) : filtered.items;
-                return createJsonResult({
-                    items: truncatedItems,
-                    count: truncatedItems.length,
-                    ...(filtered.removedCount > 0 ? {
-                        partial: true,
-                        filteredOutCount: filtered.removedCount,
-                        reason: 'permission_filtered',
-                    } : {}),
-                });
-            }
-            case 'word_count': {
-                const parsed = BlockWordCountSchema.parse(rawArgs);
-                for (const id of parsed.ids) {
-                    const { denied } = await ensurePermissionForDocumentId(client, permMgr, id, 'read');
-                    if (denied) {
-                        return denied;
-                    }
-                }
-                const result = await blockApi.getBlocksWordCount(client, parsed.ids);
-                return createJsonResult(result);
-            }
-            default: {
-                const _exhaustive: never = parsedAction;
-                return createErrorResult(new Error(`Unknown action: ${_exhaustive}`), { tool: BLOCK_TOOL_NAME, action, rawArgs });
-            }
-        }
+        const handler = BLOCK_ACTION_HANDLERS[parsedAction];
+        return await handler({ client, permMgr, rawArgs });
     } catch (error) {
         return createErrorResult(error, { tool: BLOCK_TOOL_NAME, action, rawArgs });
     }

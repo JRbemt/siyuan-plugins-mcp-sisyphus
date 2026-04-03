@@ -8,7 +8,7 @@ export const TOOL_CATEGORIES = ['notebook', 'document', 'block', 'file', 'search
 export type ToolCategory = typeof TOOL_CATEGORIES[number];
 
 export const NOTEBOOK_ACTIONS = ['list', 'create', 'open', 'close', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'] as const;
-export const DOCUMENT_ACTIONS = ['create', 'rename', 'remove', 'move', 'get_path', 'get_hpath', 'get_ids', 'get_child_blocks', 'get_child_docs', 'set_icon', 'list_tree', 'search_docs', 'get_doc', 'create_daily_note'] as const;
+export const DOCUMENT_ACTIONS = ['create', 'rename', 'remove', 'move', 'get_path', 'get_hpath', 'get_ids', 'get_child_blocks', 'get_child_docs', 'set_icon', 'set_cover', 'clear_cover', 'list_tree', 'search_docs', 'get_doc', 'create_daily_note'] as const;
 export const BLOCK_ACTIONS = ['insert', 'prepend', 'append', 'update', 'delete', 'move', 'fold', 'unfold', 'get_kramdown', 'get_children', 'transfer_ref', 'set_attrs', 'get_attrs', 'exists', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count'] as const;
 export const FILE_ACTIONS = ['upload_asset', 'render_template', 'render_sprig', 'export_md', 'export_resources'] as const;
 export const SEARCH_ACTIONS = ['fulltext', 'query_sql', 'search_tag', 'get_backlinks', 'get_backmentions'] as const;
@@ -38,8 +38,18 @@ export interface CategoryToolConfig<Action extends string = string> {
     actions: Record<Action, boolean>;
 }
 
+export interface FileCategoryToolConfig<Action extends string = string> extends CategoryToolConfig<Action> {
+    uploadLargeFileThresholdMB: number;
+}
+
 export type ToolConfig = {
-    [Category in ToolCategory]: CategoryToolConfig<ToolActionMap[Category]>;
+    notebook: CategoryToolConfig<NotebookAction>;
+    document: CategoryToolConfig<DocumentAction>;
+    block: CategoryToolConfig<BlockAction>;
+    file: FileCategoryToolConfig<FileAction>;
+    search: CategoryToolConfig<SearchAction>;
+    tag: CategoryToolConfig<TagAction>;
+    system: CategoryToolConfig<SystemAction>;
 };
 
 export const LEGACY_TOOL_TO_ACTION: Record<string, { category: ToolCategory; action: string }> = {
@@ -122,7 +132,7 @@ const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
     notebook: new Set(['remove', 'set_permission']),
     document: new Set(['remove', 'move']),
     block: new Set(['delete', 'move']),
-    file: new Set(),
+    file: new Set(['upload_asset']),
     search: new Set(),
     tag: new Set(['remove']),
     system: new Set(['workspace_info']),
@@ -147,7 +157,7 @@ export function buildDefaultToolConfig(): ToolConfig {
         },
         document: {
             enabled: true,
-            actions: createActionsRecord(DOCUMENT_ACTIONS, ['create', 'rename', 'move', 'get_path', 'get_hpath', 'get_ids', 'get_child_blocks', 'get_child_docs', 'set_icon', 'list_tree', 'search_docs', 'get_doc', 'create_daily_note']),
+            actions: createActionsRecord(DOCUMENT_ACTIONS, ['create', 'rename', 'move', 'get_path', 'get_hpath', 'get_ids', 'get_child_blocks', 'get_child_docs', 'set_icon', 'set_cover', 'clear_cover', 'list_tree', 'search_docs', 'get_doc', 'create_daily_note']),
         },
         block: {
             enabled: true,
@@ -156,6 +166,7 @@ export function buildDefaultToolConfig(): ToolConfig {
         file: {
             enabled: true,
             actions: createActionsRecord(FILE_ACTIONS, ['upload_asset', 'render_template', 'render_sprig', 'export_md', 'export_resources']),
+            uploadLargeFileThresholdMB: 10,
         },
         search: {
             enabled: true,
@@ -174,6 +185,14 @@ export function buildDefaultToolConfig(): ToolConfig {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeUploadLargeFileThresholdMB(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 10;
+    const normalized = Math.floor(value);
+    if (normalized < 1) return 1;
+    if (normalized > 1024) return 1024;
+    return normalized;
 }
 
 function getEnabledActions(categoryConfig: CategoryToolConfig<string>): string[] {
@@ -261,6 +280,9 @@ function applyNestedConfig(config: ToolConfig, raw: Record<string, unknown>) {
         if (!isRecord(categoryValue)) continue;
         if (typeof categoryValue.enabled === 'boolean') {
             config[category].enabled = categoryValue.enabled;
+        }
+        if (category === 'file' && 'uploadLargeFileThresholdMB' in categoryValue) {
+            config.file.uploadLargeFileThresholdMB = normalizeUploadLargeFileThresholdMB(categoryValue.uploadLargeFileThresholdMB);
         }
         if (!isRecord(categoryValue.actions)) continue;
         for (const action of ACTIONS_BY_CATEGORY[category]) {

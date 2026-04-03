@@ -49,7 +49,7 @@ const blockConfig: CategoryToolConfig<'insert' | 'prepend' | 'append' | 'update'
     },
 };
 
-const documentConfig: CategoryToolConfig<'create' | 'rename' | 'remove' | 'move' | 'get_path' | 'get_hpath' | 'get_ids' | 'get_child_blocks' | 'get_child_docs' | 'set_icon' | 'list_tree' | 'search_docs' | 'get_doc' | 'create_daily_note'> = {
+const documentConfig: CategoryToolConfig<'create' | 'rename' | 'remove' | 'move' | 'get_path' | 'get_hpath' | 'get_ids' | 'get_child_blocks' | 'get_child_docs' | 'set_icon' | 'set_cover' | 'clear_cover' | 'list_tree' | 'search_docs' | 'get_doc' | 'create_daily_note'> = {
     enabled: true,
     actions: {
         create: true,
@@ -62,6 +62,8 @@ const documentConfig: CategoryToolConfig<'create' | 'rename' | 'remove' | 'move'
         get_child_blocks: true,
         get_child_docs: true,
         set_icon: true,
+        set_cover: true,
+        clear_cover: true,
         list_tree: true,
         search_docs: true,
         get_doc: true,

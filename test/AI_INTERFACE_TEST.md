@@ -1496,14 +1496,24 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 #### 步骤
 
 1. 准备一个极小文本文件，例如内容为 `ai-interface-test`
-2. Base64 编码后调用：
+2. 直接传本地文件路径：
 
 ```json
 {
   "action": "upload_asset",
   "assetsDirPath": "/assets/",
-  "fileName": "ai-interface-test.txt",
-  "file": "<base64>"
+  "localFilePath": "<local-file-path>"
+}
+```
+
+2.1 若文件大于配置阈值（默认 `10 MB`），第一次调用应被中止；只有在获得用户明确同意后，才允许使用：
+
+```json
+{
+  "action": "upload_asset",
+  "assetsDirPath": "/assets/",
+  "localFilePath": "<local-file-path>",
+  "confirmLargeFile": true
 }
 ```
 
@@ -1516,10 +1526,26 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 #### 预期
 
 - `upload_asset` 成功并返回资源路径
+- 若文件大于配置阈值（默认 `10 MB`）且未传 `confirmLargeFile=true`，必须返回“停止当前操作并询问用户”的结构化结果
 - `render_template` 成功返回渲染内容，或在模板文件不存在时记录 `BLOCKED`
 - `render_sprig` 成功返回 `hello-CODEX`
 - `export_md` 成功返回 Markdown
 - `export_resources` 成功返回 ZIP 导出结果
+
+#### 设置页补充检查
+
+1. 打开插件设置页，切到 `📁 Files`
+2. 确认 `Upload Asset` 默认启用，且右侧默认不显示重复的阈值说明文案
+3. 关闭 `Upload Asset`：
+   - 阈值数字输入框应隐藏
+4. 再启用 `Upload Asset`：
+   - 开关、数字输入框、`MB` 单位应处于同一视觉组
+   - 数字输入框前不应有明显多余空白
+   - 数字输入框应为紧凑宽度，不再是默认长输入框
+5. 依次输入 `0`、`1.9`、`9999`，保存后重开设置页：
+   - 最终值应分别规范化为 `1`、`1`、`1024`
+6. 输入一个正常值（如 `25`），保存后重开设置页：
+   - 阈值应保持为 `25`
 
 ### T34 - search 全量覆盖补强
 

@@ -73,6 +73,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 
 ## 版本时间线
 
+- `v0.1.11`：新增文档头图设置/清空能力，将资源上传改为本地路径流程并补充大文件确认约束，同时同步更新文档与测试
 - `v0.1.10`：优化 MCP 聚合 tool 的行为一致性，补强权限/路径/帮助细节，并同步更新文档与测试
 - `v0.1.9`：升级笔记本权限模型为 `none` / `r` / `rw` / `rwd`，增强 move/export 行为，并补齐 MCP 文档与测试覆盖
 - `v0.1.8`：新增笔记本与文档图标支持，并将对外 MCP 聚合工具面恢复为 7 个 tool
@@ -94,6 +95,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 - `document(action="move")`
 - `block(action="delete")`
 - `block(action="move")`
+- `file(action="upload_asset")`
 - `tag(action="remove")`
 
 如果你的 MCP 客户端会展示 instructions，模型应先征得确认再执行。这属于 instruction 层的安全约束，不代表服务端一定会弹出确认对话框。
@@ -101,6 +103,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 默认 fallback 配置里，`document(action="move")` 和 `block(action="move")` 依然会出现在工具列表里。它们被启用并不代表可以跳过确认。
 
 另外注意：
+- 当 `file(action="upload_asset")` 的目标文件大于配置阈值（默认 `10 MB`）时，AI 必须终止当前操作并先询问用户；只有获得明确同意后，才能携带 `confirmLargeFile=true` 重试。
 
 - `document(action="move", fromPaths + toNotebook + toPath)` 的 `toPath` 必须是一个已存在目标文档的存储路径。
 - `block(action="move")` 在 MCP 层会返回结构化成功结果，即使底层思源 API 可能返回 `null`。
@@ -167,6 +170,8 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `remove` | 删除文档（按 ID 或存储路径） |
 | `move` | 移动文档（按 ID 或存储路径） |
 | `set_icon` | 设置文档/文件夹图标；推荐使用 `1f4d4` 这类 Unicode 十六进制字符串，而不是直接传 emoji 字符 |
+| `set_cover` | 设置文档头图，优先使用 `http(s)` URL，其次才是 `/assets/...` 路径 |
+| `clear_cover` | 清空文档头图 |
 | `get_path` | 按文档 ID 获取存储路径 |
 | `get_hpath` | 按 ID 或存储路径获取人类可读路径 |
 | `get_ids` | 按人类可读路径获取文档 ID |
@@ -178,6 +183,8 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `create_daily_note` | 为笔记本创建或返回今日日记 |
 
 路径语义：`create` 与 `get_ids` 使用人类可读路径（如 `/Inbox/Weekly Note`）。`rename`、`remove`、`move`、`get_hpath`、`list_tree` 与 `search_docs.path` 使用 `get_path` 返回的存储路径。需要把人类可读路径解析成文档 ID 时，优先使用 `get_ids`。刚创建文档后，`get_ids` 可能因 SiYuan 索引延迟而短暂滞后。
+
+头图语义：`set_cover` 与 `clear_cover` 是对文档根块 `title-img` 属性的语义封装。调用时优先直接传图片 URL；只有在用户明确希望把图片归档到思源资源库时，才先上传到 `/assets/...` 再设置头图。若要查看底层原值，可使用 `block(action="get_attrs", id=docId)`。
 
 ### `block`
 
@@ -203,7 +210,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 
 | Action | 说明 |
 |--------|------|
-| `upload_asset` | 上传资源文件 |
+| `upload_asset` | 读取本地文件路径并上传资源文件（因会读取本地文件系统，需先确认；超过配置阈值，默认 `10 MB`，时必须先中止并征求用户同意，再携带 `confirmLargeFile=true` 重试） |
 | `render_template` | 使用文档上下文渲染模板 |
 | `render_sprig` | 渲染 Sprig 模板 |
 | `export_md` | 导出文档为 Markdown |

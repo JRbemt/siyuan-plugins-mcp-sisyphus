@@ -207,6 +207,7 @@ interface IResListDocsByPath {
 interface IReqUpload {
     assetsDirPath: string;
     file: File[];
+    localFilePath?: string;
 }
 
 type BlockId = string;

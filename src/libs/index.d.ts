@@ -12,6 +12,12 @@ interface ISettingItemCore {
     type: TSettingItemType;
     key: string;
     value: any;
+    title?: string;
+    description?: string;
+    layout?: "default" | "inline";
+    inputStyle?: string;
+    inputCompact?: boolean;
+    unit?: string;
     placeholder?: string;
     slider?: {
         min: number;
@@ -23,6 +29,7 @@ interface ISettingItemCore {
         label: string;
         callback: () => void;
     }
+    children?: ISettingItemCore[];
 }
 
 interface ISettingItem extends ISettingItemCore {

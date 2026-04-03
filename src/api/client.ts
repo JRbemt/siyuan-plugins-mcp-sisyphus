@@ -23,6 +23,18 @@ export class SiYuanClient {
         this.token = token;
     }
 
+    getBaseUrl(): string {
+        return this.baseUrl;
+    }
+
+    getAuthHeaders(): Record<string, string> {
+        const headers: Record<string, string> = {};
+        if (this.token) {
+            headers['Authorization'] = `Token ${this.token}`;
+        }
+        return headers;
+    }
+
     async readFile(path: string): Promise<string> {
         const url = `${this.baseUrl}/api/file/getFile`;
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -38,12 +50,10 @@ export class SiYuanClient {
                 body: JSON.stringify({ path }),
                 signal: controller.signal,
             });
-            clearTimeout(timeoutId);
             if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
             return await response.text();
-        } catch (error) {
+        } finally {
             clearTimeout(timeoutId);
-            throw error;
         }
     }
 
@@ -62,15 +72,15 @@ export class SiYuanClient {
                 body: JSON.stringify({ path }),
                 signal: controller.signal,
             });
-            clearTimeout(timeoutId);
             if (!response.ok) throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
             return new Uint8Array(await response.arrayBuffer());
         } catch (error) {
-            clearTimeout(timeoutId);
             if (error instanceof Error && error.name === 'AbortError') {
                 throw new Error(`Request timeout after ${this.timeout}ms`);
             }
             throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
@@ -96,7 +106,6 @@ export class SiYuanClient {
                 body: formData,
                 signal: controller.signal,
             });
-            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
@@ -107,17 +116,18 @@ export class SiYuanClient {
                 throw new Error(`SiYuan API error: ${result.code} - ${result.msg}`);
             }
         } catch (error) {
-            clearTimeout(timeoutId);
             if (error instanceof Error && error.name === 'AbortError') {
                 throw new Error(`Request timeout after ${this.timeout}ms`);
             }
             throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
     async request<T>(endpoint: string, data?: object): Promise<T> {
         const url = `${this.baseUrl}${endpoint}`;
-        
+
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };
@@ -137,8 +147,6 @@ export class SiYuanClient {
                 signal: controller.signal,
             });
 
-            clearTimeout(timeoutId);
-
             if (!response.ok) {
                 throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
             }
@@ -151,16 +159,16 @@ export class SiYuanClient {
 
             return result.data;
         } catch (error) {
-            clearTimeout(timeoutId);
-            
             if (error instanceof Error) {
                 if (error.name === 'AbortError') {
                     throw new Error(`Request timeout after ${this.timeout}ms`);
                 }
                 throw error;
             }
-            
+
             throw new Error('Unknown error occurred during request');
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 }

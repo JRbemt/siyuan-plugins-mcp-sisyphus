@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import * as fileApi from '../../api/file';
 import { normalizeMarkdownContent } from '../normalize';
-import type { CategoryToolConfig, FileAction } from '../config';
+import type { CategoryToolConfig, FileAction, FileCategoryToolConfig } from '../config';
 import { FILE_ACTION_HINTS, FILE_GUIDANCE } from '../help';
 import type { PermissionManager } from '../permissions';
 import {
@@ -18,15 +18,16 @@ import { ensurePermissionForDocumentId } from './context';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const FILE_TOOL_NAME = 'file';
+const DEFAULT_LARGE_UPLOAD_THRESHOLD_MB = 10;
 
 export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
     {
         action: 'upload_asset',
         schema: createActionSchema('upload_asset', {
             assetsDirPath: { type: 'string', description: 'Asset directory path (e.g., /assets/)' },
-            file: { type: 'string', description: 'Base64 encoded file content' },
-            fileName: { type: 'string', description: 'Original file name' },
-        }, ['assetsDirPath', 'file', 'fileName'], 'Upload a file asset to the specified assets directory.'),
+            localFilePath: { type: 'string', description: 'Local file path to read and upload into the assets directory' },
+            confirmLargeFile: { type: 'boolean', description: 'Set to true only after the user explicitly confirms uploading a file larger than the configured safety threshold.' },
+        }, ['assetsDirPath', 'localFilePath'], 'Read a local file and upload it to the specified assets directory.'),
     },
     {
         action: 'render_template',
@@ -94,10 +95,14 @@ function resolveLocalOutputPath(outputPath: string): string {
     return path.isAbsolute(outputPath) ? outputPath : path.resolve(process.cwd(), outputPath);
 }
 
+function resolveLocalInputPath(inputPath: string): string {
+    return path.isAbsolute(inputPath) ? inputPath : path.resolve(process.cwd(), inputPath);
+}
+
 export async function callFileTool(
     client: SiYuanClient,
     args: Record<string, unknown> | undefined,
-    config: CategoryToolConfig<FileAction>,
+    config: CategoryToolConfig<FileAction> | FileCategoryToolConfig<FileAction>,
     permMgr: PermissionManager,
 ): Promise<ToolResult> {
     const rawArgs = args ?? {};
@@ -107,6 +112,10 @@ export async function callFileTool(
     if (helpResult) return helpResult;
 
     try {
+        const thresholdMB = 'uploadLargeFileThresholdMB' in config && typeof config.uploadLargeFileThresholdMB === 'number'
+            ? config.uploadLargeFileThresholdMB
+            : DEFAULT_LARGE_UPLOAD_THRESHOLD_MB;
+        const largeUploadThresholdBytes = thresholdMB * 1024 * 1024;
         const parsedAction = FileActionSchema.parse(rawArgs.action);
         if (!config.enabled || !config.actions[parsedAction]) {
             return createDisabledActionResult(FILE_TOOL_NAME, parsedAction);
@@ -115,15 +124,35 @@ export async function callFileTool(
         switch (parsedAction) {
             case 'upload_asset': {
                 const parsed = FileUploadAssetSchema.parse(rawArgs);
-                const byteCharacters = atob(parsed.file);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                const localFilePath = resolveLocalInputPath(parsed.localFilePath);
+                if (!fs.existsSync(localFilePath)) {
+                    throw new Error(`Local file does not exist: ${localFilePath}`);
                 }
-                const byteArray = new Uint8Array(byteNumbers);
-                const file = new File([byteArray], parsed.fileName);
-                const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, file, parsed.fileName);
-                return createJsonResult(result);
+                const stat = fs.statSync(localFilePath);
+                if (!stat.isFile()) {
+                    throw new Error(`Local file path must point to a regular file: ${localFilePath}`);
+                }
+                if (stat.size > largeUploadThresholdBytes && parsed.confirmLargeFile !== true) {
+                    return createJsonResult({
+                        success: false,
+                        requiresConfirmation: true,
+                        reason: 'file_too_large',
+                        localFilePath,
+                        fileSizeBytes: stat.size,
+                        thresholdBytes: largeUploadThresholdBytes,
+                        thresholdMB,
+                        message: `File exceeds the large-upload safety threshold (${thresholdMB} MB). Stop the current operation and ask the user for explicit confirmation before retrying with confirmLargeFile=true.`,
+                    });
+                }
+                const fileName = path.basename(localFilePath);
+                const fileBytes = fs.readFileSync(localFilePath);
+                const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, fileBytes, fileName);
+                return createJsonResult({
+                    ...result,
+                    localFilePath,
+                    uploadedFileName: fileName,
+                    ...(stat.size > largeUploadThresholdBytes ? { largeFileConfirmed: true } : {}),
+                });
             }
             case 'render_template': {
                 const parsed = FileRenderTemplateSchema.parse(rawArgs);

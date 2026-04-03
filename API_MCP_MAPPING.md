@@ -105,6 +105,8 @@
 | `get_child_blocks` | `POST /api/block/getChildBlocks` | `src/api/block.ts` | 使用解析后的根文档 ID |
 | `get_child_docs` | `POST /api/filetree/listDocsByPath` | `src/api/document.ts` | 使用解析后的笔记本 + 存储路径 |
 | `set_icon` | `POST /api/attr/setBlockAttrs` | `src/api/attribute.ts` | 给文档块写入 `icon` 属性 |
+| `set_cover` | `POST /api/attr/setBlockAttrs` | `src/api/attribute.ts` | 给文档块写入 `title-img` 属性，值为 `background-image:url(\"...\");` |
+| `clear_cover` | `POST /api/attr/setBlockAttrs` | `src/api/attribute.ts` | 将文档块的 `title-img` 属性清空 |
 | `list_tree` | `POST /api/filetree/listDocTree` | `src/api/document.ts` | 获取嵌套文档树 |
 | `search_docs` | `POST /api/filetree/searchDocs` | `src/api/document.ts` | 思源原生是全局标题搜索 |
 | `get_doc` | `POST /api/filetree/getDoc` | `src/api/document.ts` | 获取文档内容和元数据 |
@@ -158,7 +160,7 @@
 
 | MCP action | 思源 HTTP API | Wrapper | 说明 |
 |---|---|---|---|
-| `upload_asset` | `POST /api/asset/upload` | `src/api/file.ts` | multipart 上传 |
+| `upload_asset` | `POST /api/asset/upload` | `src/api/file.ts` | 读取本地文件路径后以 multipart 上传（高危，需先确认；若文件超过配置阈值，默认 `10 MB`，必须先中止并获得用户确认，再携带 `confirmLargeFile=true` 重试） |
 | `render_template` | `POST /api/template/render` | `src/api/file.ts` | 需要可读文档 ID |
 | `render_sprig` | `POST /api/template/renderSprig` | `src/api/file.ts` | 仅模板渲染 |
 | `export_md` | `POST /api/export/exportMdContent` | `src/api/file.ts` | 需要可读文档 ID |

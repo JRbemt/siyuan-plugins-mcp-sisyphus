@@ -87,6 +87,8 @@
 - `export_md`
 - `export_resources`
 
+头图通常优先直接用 `document(action="set_cover", source="https://...")`。只有当用户明确希望把本地图片归档进思源资源库时，才先调用 `file(action="upload_asset", localFilePath=...)`，再把返回的 `/assets/...` 路径传给 `set_cover`。如果本地文件超过配置阈值（默认 `10 MB`），AI 必须先终止当前操作并询问用户，只有在用户明确同意后，才可以带 `confirmLargeFile=true` 重试上传。
+
 ### `system`
 
 - `push_msg`

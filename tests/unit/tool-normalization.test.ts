@@ -17,11 +17,16 @@ vi.mock('@/mcp/tools/context', () => ({
 }));
 
 vi.mock('@/api/file', () => ({
+    uploadAsset: vi.fn(),
     exportMdContent: vi.fn(),
 }));
 
 vi.mock('@/api/document', () => ({
     getDoc: vi.fn(),
+}));
+
+vi.mock('@/api/attribute', () => ({
+    setBlockAttrs: vi.fn(),
 }));
 
 vi.mock('@/api/block', () => ({
@@ -50,11 +55,14 @@ describe('tool result normalization', () => {
     beforeEach(async () => {
         const fileApi = await import('@/api/file');
         const documentApi = await import('@/api/document');
+        const attributeApi = await import('@/api/attribute');
         const blockApi = await import('@/api/block');
         const searchApi = await import('@/api/search');
 
+        vi.mocked(fileApi.uploadAsset).mockReset();
         vi.mocked(fileApi.exportMdContent).mockReset();
         vi.mocked(documentApi.getDoc).mockReset();
+        vi.mocked(attributeApi.setBlockAttrs).mockReset();
         vi.mocked(blockApi.updateBlock).mockReset();
         vi.mocked(blockApi.getBlockKramdown).mockReset();
         vi.mocked(blockApi.getChildBlocks).mockReset();
@@ -80,6 +88,135 @@ describe('tool result normalization', () => {
             hPath: '/Doc',
             content: 'hello #tag#',
         });
+    });
+
+    it('uploads an asset from localFilePath', async () => {
+        const fileApi = await import('@/api/file');
+        const fs = await import('fs');
+        vi.spyOn(fs.default, 'existsSync').mockReturnValue(true);
+        vi.spyOn(fs.default, 'statSync').mockReturnValue({
+            isFile: () => true,
+        } as any);
+        vi.spyOn(fs.default, 'readFileSync').mockReturnValue(new Uint8Array([65, 66, 67]) as any);
+        vi.mocked(fileApi.uploadAsset).mockResolvedValue({
+            errFiles: [],
+            succMap: { 'demo.txt': '/assets/demo.txt' },
+        });
+
+        const result = await callFileTool(client, {
+            action: 'upload_asset',
+            assetsDirPath: '/assets/',
+            localFilePath: 'tmp/demo.txt',
+        }, enabledActions('upload_asset'), permMgr);
+
+        expect(vi.mocked(fileApi.uploadAsset)).toHaveBeenCalledWith(
+            client,
+            '/assets/',
+            new Uint8Array([65, 66, 67]),
+            'demo.txt',
+        );
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            errFiles: [],
+            succMap: { 'demo.txt': '/assets/demo.txt' },
+            localFilePath: expect.stringMatching(/tmp[\\/]+demo\.txt$/),
+            uploadedFileName: 'demo.txt',
+        });
+    });
+
+    it('rejects the removed base64 upload_asset shape', async () => {
+        const result = await callFileTool(client, {
+            action: 'upload_asset',
+            assetsDirPath: '/assets/',
+            fileName: 'demo.txt',
+            file: 'QUJD',
+        }, enabledActions('upload_asset'), permMgr);
+
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.error.type).toBe('validation_error');
+    });
+
+    it('stops oversized uploads until the user explicitly confirms', async () => {
+        const fileApi = await import('@/api/file');
+        const fs = await import('fs');
+        vi.spyOn(fs.default, 'existsSync').mockReturnValue(true);
+        vi.spyOn(fs.default, 'statSync').mockReturnValue({
+            isFile: () => true,
+            size: 10 * 1024 * 1024 + 1,
+        } as any);
+
+        const result = await callFileTool(client, {
+            action: 'upload_asset',
+            assetsDirPath: '/assets/',
+            localFilePath: 'tmp/huge.bin',
+        }, enabledActions('upload_asset'), permMgr);
+
+        expect(vi.mocked(fileApi.uploadAsset)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            success: false,
+            requiresConfirmation: true,
+            reason: 'file_too_large',
+            localFilePath: expect.stringMatching(/tmp[\\/]+huge\.bin$/),
+            fileSizeBytes: 10 * 1024 * 1024 + 1,
+            thresholdBytes: 10 * 1024 * 1024,
+            thresholdMB: 10,
+            message: 'File exceeds the large-upload safety threshold (10 MB). Stop the current operation and ask the user for explicit confirmation before retrying with confirmLargeFile=true.',
+        });
+    });
+
+    it('allows oversized uploads after explicit confirmation', async () => {
+        const fileApi = await import('@/api/file');
+        const fs = await import('fs');
+        vi.spyOn(fs.default, 'existsSync').mockReturnValue(true);
+        vi.spyOn(fs.default, 'statSync').mockReturnValue({
+            isFile: () => true,
+            size: 10 * 1024 * 1024 + 1,
+        } as any);
+        vi.spyOn(fs.default, 'readFileSync').mockReturnValue(new Uint8Array([70]) as any);
+        vi.mocked(fileApi.uploadAsset).mockResolvedValue({
+            errFiles: [],
+            succMap: { 'huge.bin': '/assets/huge.bin' },
+        });
+
+        const result = await callFileTool(client, {
+            action: 'upload_asset',
+            assetsDirPath: '/assets/',
+            localFilePath: 'tmp/huge.bin',
+            confirmLargeFile: true,
+        }, enabledActions('upload_asset'), permMgr);
+
+        expect(vi.mocked(fileApi.uploadAsset)).toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            errFiles: [],
+            succMap: { 'huge.bin': '/assets/huge.bin' },
+            localFilePath: expect.stringMatching(/tmp[\\/]+huge\.bin$/),
+            uploadedFileName: 'huge.bin',
+            largeFileConfirmed: true,
+        });
+    });
+
+    it('uses the configured large upload threshold from file tool config', async () => {
+        const fileApi = await import('@/api/file');
+        const fs = await import('fs');
+        vi.spyOn(fs.default, 'existsSync').mockReturnValue(true);
+        vi.spyOn(fs.default, 'statSync').mockReturnValue({
+            isFile: () => true,
+            size: 2 * 1024 * 1024,
+        } as any);
+
+        const result = await callFileTool(client, {
+            action: 'upload_asset',
+            assetsDirPath: '/assets/',
+            localFilePath: 'tmp/custom-threshold.bin',
+        }, {
+            ...enabledActions('upload_asset'),
+            uploadLargeFileThresholdMB: 1,
+        }, permMgr);
+
+        expect(vi.mocked(fileApi.uploadAsset)).not.toHaveBeenCalled();
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.reason).toBe('file_too_large');
+        expect(parsed.thresholdMB).toBe(1);
+        expect(parsed.thresholdBytes).toBe(1024 * 1024);
     });
 
     it('keeps html mode routed through document.getDoc', async () => {
@@ -179,6 +316,44 @@ describe('tool result normalization', () => {
 
         expect(JSON.parse(exportResult.content[0].text).content).toBe('#tag#');
         expect(JSON.parse(kramdownResult.content[0].text).kramdown).toBe('#tag#');
+    });
+
+    it('normalizes document cover sources into title-img attributes', async () => {
+        const attributeApi = await import('@/api/attribute');
+
+        const result = await callDocumentTool(client, {
+            action: 'set_cover',
+            id: 'doc-1',
+            source: ' /assets/covers/demo "cover".png ',
+        }, enabledActions('set_cover'), permMgr);
+
+        expect(vi.mocked(attributeApi.setBlockAttrs)).toHaveBeenCalledWith(client, 'doc-1', {
+            'title-img': 'background-image:url("/assets/covers/demo \\"cover\\".png");',
+        });
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            success: true,
+            id: 'doc-1',
+            source: '/assets/covers/demo "cover".png',
+            titleImg: 'background-image:url("/assets/covers/demo \\"cover\\".png");',
+        });
+    });
+
+    it('clears document cover attributes', async () => {
+        const attributeApi = await import('@/api/attribute');
+
+        const result = await callDocumentTool(client, {
+            action: 'clear_cover',
+            id: 'doc-1',
+        }, enabledActions('clear_cover'), permMgr);
+
+        expect(vi.mocked(attributeApi.setBlockAttrs)).toHaveBeenCalledWith(client, 'doc-1', {
+            'title-img': '',
+        });
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            success: true,
+            id: 'doc-1',
+            cleared: true,
+        });
     });
 
     it('adds plainContent when search.fulltext stripHtml is enabled', async () => {

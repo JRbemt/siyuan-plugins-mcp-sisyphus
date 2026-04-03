@@ -12,7 +12,7 @@ import {
     SearchQuerySqlSchema,
     SearchTagSchema,
 } from '../types';
-import { createResultResolutionCache, ensurePermissionForDocumentId, resolveResultItemContext } from './context';
+import { createResultResolutionCache, ensurePermissionForDocumentId, escapeSqlString, resolveResultItemContext } from './context';
 import { applyTruncation, buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
 export const SEARCH_TOOL_NAME = 'search';
@@ -107,12 +107,9 @@ function createPartialMetadata(removedCount: number): {
         : {};
 }
 
-function escapeSqlString(value: string): string {
-    return value.replace(/'/g, "''");
-}
-
 function escapeSqlLike(value: string): string {
     return value
+        .replace(/\0/g, '')
         .replace(/\\/g, '\\\\')
         .replace(/%/g, '\\%')
         .replace(/_/g, '\\_')
