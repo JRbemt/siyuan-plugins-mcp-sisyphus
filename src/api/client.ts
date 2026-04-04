@@ -15,7 +15,9 @@ export class SiYuanClient {
     private token: string = '';
 
     constructor(config: SiYuanClientConfig = {}) {
-        this.baseUrl = config.baseUrl || 'http://127.0.0.1:6806';
+        this.baseUrl = config.baseUrl
+            || process.env.SIYUAN_API_URL
+            || 'http://127.0.0.1:6806';
         this.timeout = config.timeout || 30000;
     }
 
@@ -143,7 +145,7 @@ export class SiYuanClient {
             const response = await fetch(url, {
                 method: 'POST',
                 headers,
-                body: data ? JSON.stringify(data) : undefined,
+                body: JSON.stringify(data ?? {}),
                 signal: controller.signal,
             });
 

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { showMessage } from "siyuan";
+    import { fetchPost, showMessage } from "siyuan";
 
     import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type BlockAction, type DocumentAction, type FileAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
     import { loadPersistedToolConfig, savePersistedToolConfig } from "./tool-config-storage";
@@ -272,13 +272,19 @@
 
     async function loadNotebooks() {
         try {
-            const resp = await fetch("http://127.0.0.1:6806/api/notebook/lsNotebooks", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({}),
+            await new Promise<void>((resolve, reject) => {
+                fetchPost("/api/notebook/lsNotebooks", {}, (resp: any) => {
+                    if (resp?.code === 0) {
+                        notebooks = (resp?.data?.notebooks ?? []).map((nb: any) => ({
+                            id: nb.id,
+                            name: nb.name,
+                        }));
+                        resolve();
+                    } else {
+                        reject(new Error(resp?.msg || "Failed to load notebooks"));
+                    }
+                });
             });
-            const json = await resp.json();
-            notebooks = (json?.data?.notebooks ?? []).map((nb: any) => ({ id: nb.id, name: nb.name }));
         } catch {
             notebooks = [];
         }

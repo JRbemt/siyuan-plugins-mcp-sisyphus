@@ -148,6 +148,14 @@ function asCategory(name: string): ToolCategory | null {
 async function initSiYuanClient(): Promise<SiYuanClient> {
     const client = new SiYuanClient();
 
+    // 优先使用环境变量传入的 token（Docker 鉴权场景必需）
+    const envToken = process.env.SIYUAN_TOKEN;
+    if (envToken) {
+        client.setToken(envToken);
+        return client;
+    }
+
+    // 无鉴权场景：尝试从 API 获取 token
     try {
         const token = await client.request<string>('/api/system/getApiToken', {});
         if (token) {
