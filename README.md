@@ -4,7 +4,7 @@
 
 > Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenCode, Claude Code, and other AI CLI tools directly in the SiYuan sidebar.
 
-A SiYuan Note MCP server plugin built around progressive disclosure — exposing seven aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`), mandatory confirmation gates on high-risk actions, and steadily refined tool behavior, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
+A SiYuan Note MCP server plugin built around progressive disclosure — exposing eight aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, `system`, and `mascot`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`), mandatory confirmation gates on high-risk actions, steadily refined tool behavior, and a lightweight mascot feedback loop, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
 
 - `notebook`
 - `document`
@@ -13,6 +13,7 @@ A SiYuan Note MCP server plugin built around progressive disclosure — exposing
 - `search`
 - `tag`
 - `system`
+- `mascot`
 
 Each tool uses a required `action` field instead of exposing dozens of endpoint-shaped tool names.
 
@@ -55,11 +56,12 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 ## Features
 
 - Full SiYuan API coverage for notebooks, documents, blocks, assets, export, and notifications
-- A smaller MCP surface: 7 grouped tools instead of dozens of endpoint-level tools
+- A smaller MCP surface: 8 grouped tools instead of dozens of endpoint-level tools
 - Clearer parameter semantics, result shapes, and help messages for smoother MCP client integration
 - Action-level toggles in the plugin settings. In the default fallback config, delete-style actions are disabled while move actions stay enabled and confirmation-gated.
 - Notebook- and document-level tree queries for direct child documents and blocks
 - Full-text search, SQL queries, tag search, backlink and backmention queries
+- A mascot tool plus on-screen mascot feedback for balance, shop, buy, and lightweight MCP activity visibility
 - Notebook permission guards now resolve block/document ownership before mutating APIs run, with more predictable edge-case handling
 
 ## Permission Model
@@ -69,10 +71,11 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 - `r`: read access only; all write and delete actions are rejected
 - `none`: no read, write, or delete access
 - `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
-- For AI regression runs, preheat all 7 tools early so permission prompts do not interrupt the middle of a test
+- For AI regression runs, preheat all 8 tools early so permission prompts do not interrupt the middle of a test
 
 ## Timeline
 
+- `v0.1.12`: Adds the `mascot` aggregated tool, improves Docker/env-based API auth flows, and refreshes docs plus tests for the 8-tool surface
 - `v0.1.11`: Adds document cover actions, switches asset uploads to local-path flows with large-file confirmation, and refreshes docs plus tests
 - `v0.1.10`: Refines aggregated tool behavior, tightens permission/path/help details, and refreshes docs plus test coverage
 - `v0.1.9`: Expands notebook permissions to `none` / `r` / `rw` / `rwd`, improves move/export behaviors, and strengthens MCP docs and test coverage
@@ -142,6 +145,7 @@ pnpm run make-link
   }
 }
 ```
+Get the API token from Settings/About.
 
 The folder name in the path must match `plugin.json`: `siyuan-plugins-mcp-sisyphus`.
 
@@ -232,6 +236,14 @@ Cover semantics: `set_cover` and `clear_cover` are semantic wrappers around the 
 | `conf` | Get masked system configuration with summary-first progressive reading |
 | `sys_fonts` | List available system fonts with summary-first paginated reading |
 | `boot_progress` | Get current boot progress details |
+
+### `mascot`
+
+| Action | Description |
+|--------|-------------|
+| `get_balance` | Get the mascot's current spendable balance |
+| `shop` | List the mascot shop inventory with stable item IDs, labels, cost, type, and emoji |
+| `buy` | Buy one mascot shop item by `item_id` and spend from the current balance |
 
 Tags are not created through a dedicated tag action. Write tags into block markdown as `#tag#` so SiYuan can recognize them.
 

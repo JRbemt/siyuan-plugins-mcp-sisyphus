@@ -12,8 +12,8 @@
     "zh_CN": "思源 MCP sisyphus"
   },
   "description": {
-    "default": "SiYuan MCP server with notebook-level permissions, search/read/write/delete, and emoji icon support for notebooks and documents.",
-    "zh_CN": "思源 MCP 服务器，支持笔记本级权限管控、搜索与读写删操作，还能为笔记本和文档设置 emoji 图标。"
+    "default": "SiYuan MCP server with notebook-level permissions, 8 aggregated tools, mascot interactions, and emoji icon support for notebooks and documents.",
+    "zh_CN": "思源 MCP 服务器，支持笔记本级权限管控、8 个聚合工具、猫猫交互能力，以及笔记本和文档 emoji 图标设置。"
   },
   "readme": {
     "default": "README.md",

@@ -4,7 +4,7 @@
 
 > 推荐搭配：[AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge)。如果你想把 OpenCode、kimi Code 等有 Web 端的工具直接嵌进思源侧边栏使用，这两个插件一起用会更顺手。
 
-这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`file`、`search`、`tag`、`system` 七个聚合工具。配合 `none / r / rw / rwd` 四态权限模型、高危操作二次确认机制，以及持续打磨的 tool 行为一致性，它在简化 AI 调用路径的同时，也让自动化链路更稳定、权限管理更细腻。
+这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`file`、`search`、`tag`、`system`、`mascot` 八个聚合工具。配合 `none / r / rw / rwd` 四态权限模型、高危操作二次确认机制、持续打磨的 tool 行为一致性，以及轻量的猫猫交互反馈，它在简化 AI 调用路径的同时，也让自动化链路更稳定、权限管理更细腻。
 
 - `notebook`
 - `document`
@@ -13,6 +13,7 @@
 - `search`
 - `tag`
 - `system`
+- `mascot`
 
 每个 tool 通过必填的 `action` 字段分派具体操作，不再直接暴露大量 endpoint 风格的 tool 名。
 
@@ -55,11 +56,12 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 ## 功能特性
 
 - 完整覆盖笔记本、文档、块、资源、导出和通知相关的思源 API
-- 对外工具面收敛为 7 个聚合 tool，减少模型选错 tool 的概率
+- 对外工具面收敛为 8 个聚合 tool，减少模型选错 tool 的概率
 - 持续优化参数语义、返回结构与帮助提示，降低 MCP 客户端接入成本
 - 插件设置仍保留到 action 级别的开关。默认 fallback 配置里，删除类 action 不暴露，移动类 action 仍暴露但必须先确认。
 - 支持按笔记本 / 文档查询直属子文档与直属子块
 - 支持全文搜索、SQL 查询、标签搜索、反向链接与反向提及查询
+- 新增 `mascot` 工具与界面猫猫反馈，可查看余额、浏览商店、购买道具并直观看到 MCP 动作反馈
 - 权限校验会先解析块 / 文档所属笔记本，再决定是否允许读写，边界行为更可预期
 
 ## 权限模型
@@ -69,10 +71,11 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 - `r`：只允许读，所有写和删除操作都应被拒绝
 - `none`：禁止所有读、写、删除
 - `notebook(action="set_permission")` 设置后，会立即影响后续的 `notebook`、`document`、`block` 调用
-- AI 做回归时，建议一开始先把 7 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
+- AI 做回归时，建议一开始先把 8 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
 
 ## 版本时间线
 
+- `v0.1.12`：新增 `mascot` 聚合 tool，补强 Docker / 环境变量鉴权接入流程，并同步刷新第 8 个工具面的文档与测试
 - `v0.1.11`：新增文档头图设置/清空能力，将资源上传改为本地路径流程并补充大文件确认约束，同时同步更新文档与测试
 - `v0.1.10`：优化 MCP 聚合 tool 的行为一致性，补强权限/路径/帮助细节，并同步更新文档与测试
 - `v0.1.9`：升级笔记本权限模型为 `none` / `r` / `rw` / `rwd`，增强 move/export 行为，并补齐 MCP 文档与测试覆盖
@@ -142,6 +145,7 @@ pnpm run make-link
   }
 }
 ```
+到设置/关于中获取 API token
 
 路径中的文件夹名必须与 `plugin.json` 的 `name` 一致，即 `siyuan-plugins-mcp-sisyphus`。
 
@@ -232,6 +236,14 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `conf` | 以“先摘要、后深入”的方式获取脱敏后的系统配置 |
 | `sys_fonts` | 以“先摘要、后分页”的方式列出系统字体 |
 | `boot_progress` | 获取当前启动进度详情 |
+
+### `mascot`
+
+| Action | 说明 |
+|--------|------|
+| `get_balance` | 获取猫猫当前可用余额 |
+| `shop` | 列出猫猫商店中的商品，包含稳定 `item_id`、名称、价格、类型和 emoji |
+| `buy` | 根据 `item_id` 购买一件猫猫商店商品，并从当前余额中扣费 |
 
 标签不是通过单独的创建 action 生成的。请在块的 Markdown 内容里写成 `#标签#`，这样思源才能识别为真正的标签。
 

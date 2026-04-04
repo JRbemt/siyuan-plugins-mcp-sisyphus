@@ -1,11 +1,11 @@
 ---
 name: siyuan-mcp-sisyphus
-description: Operate SiYuan notes via 7 aggregated MCP tools (notebook/document/block/file/search/tag/system). Covers path semantics, permissions, block editing, search, tags, and export.
+description: Operate SiYuan notes via 8 aggregated MCP tools (notebook/document/block/file/search/tag/system/mascot). Covers path semantics, permissions, block editing, search, tags, export, and mascot actions.
 ---
 
 # SiYuan MCP Sisyphus
 
-7 aggregated MCP tools for SiYuan note operations. Each tool takes an `action` parameter. Full parameter schemas are in the tool descriptions — this skill covers pitfalls and non-obvious behavior.
+8 aggregated MCP tools for SiYuan note operations. Each tool takes an `action` parameter. Full parameter schemas are in the tool descriptions — this skill covers pitfalls and non-obvious behavior.
 
 ## Recommended Workflow
 
