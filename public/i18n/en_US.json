@@ -13,7 +13,7 @@
     "getTab": "Print out all opened custom tabs in the debugger",
     "appName": "SiYuan",
     "mcpApiUrl": "API URL",
-    "mcpApiUrlDesc": "SiYuan API endpoint URL (default: http://127.0.0.1:6806)",
+    "mcpApiUrlDesc": "SiYuan API endpoint URL",
     "mcpToolsSettingTitle": "MCP Tools Settings",
     "hello": {
         "makesure": "Before using this template, please read the <a href=\"https://github.com/siyuan-note/plugin-sample\">offical sample</a>, make sure that you've known about the pipeline for plugin developing."

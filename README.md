@@ -133,7 +133,11 @@ pnpm run make-link
   "mcpServers": {
     "siyuan": {
       "command": "node",
-      "args": ["/absolute/path/SiYuan/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
+      "args": ["{SIYUAN_PATH}/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
+      "env":{
+        "SIYUAN_API_URL": "http://127.0.0.1:6806/",
+        "SIYUAN_TOKEN": "xxxxxx"
+      }
     }
   }
 }

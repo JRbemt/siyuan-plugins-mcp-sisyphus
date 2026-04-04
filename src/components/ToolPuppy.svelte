@@ -28,7 +28,7 @@
     export let showClickHint = true;
 
     const EVENTS_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/puppyEvents.json';
-    const API_URL = 'http://127.0.0.1:6806';
+    const API_FILE_ENDPOINT = '/api/file/getFile';
     const POLL_INTERVAL = 500;
     const IDLE_TIMEOUT = 3000;
     const RESULT_DISPLAY_TIME = 2400;
@@ -412,7 +412,7 @@
     async function pollEvents() {
         if (testModeEnabled) return;
         try {
-            const res = await fetch(`${API_URL}/api/file/getFile`, {
+            const res = await fetch(API_FILE_ENDPOINT, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: EVENTS_PATH }),

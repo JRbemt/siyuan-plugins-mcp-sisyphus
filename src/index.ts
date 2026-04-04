@@ -6,6 +6,7 @@ import {
 import "./index.scss";
 
 import {
+    buildDefaultPuppySettings,
     loadPersistedPuppySettings,
     loadPersistedToolConfig,
     savePersistedToolConfig,
@@ -14,19 +15,11 @@ import {
 import McpConfig from "@/setting/mcp-config.svelte";
 import ToolPuppy from "@/components/ToolPuppy.svelte";
 
-/** 思源 API 端口写死，不读写 menu-config.json */
-const MCP_API_URL = "http://127.0.0.1:6806";
-
 export default class SiyuanMCP extends Plugin {
-
-    /** 供其他模块读取，端口固定 */
-    mcpSettings = { apiUrl: MCP_API_URL };
-
     private puppyComponent: ToolPuppy | null = null;
     private puppyVisible = true;
     private puppyContainer: HTMLElement | null = null;
-    private puppySettings: PuppySettings = { visible: true, testModeEnabled: false, testModeIntervalMs: 2200, showBubble: false, showClickHint: true };
-
+    private puppySettings: PuppySettings = buildDefaultPuppySettings();
     async onload() {
         const normalized = await loadPersistedToolConfig(this);
         await savePersistedToolConfig(normalized, this);
