@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSiYuanServer } from '@/mcp/server';
@@ -9,22 +9,15 @@ describe('MCP Server Integration', () => {
 
     beforeEach(async () => {
         global.fetch = vi.fn();
+        process.env.SIYUAN_TOKEN = 'test-token';
         storedFiles = {
             '/data/storage/petal/siyuan-plugins-mcp-sisyphus/notebookPermissions': '{}',
             '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig': '',
         };
 
-        // Mock all API responses: token + permission load + config read
+        // Mock all API responses: permission load + config read
         vi.mocked(global.fetch).mockImplementation(async (url, init) => {
             const urlStr = String(url);
-
-            // Token retrieval
-            if (urlStr.includes('/api/system/getApiToken')) {
-                return {
-                    ok: true,
-                    json: async () => ({ code: 0, msg: 'success', data: 'test-token' }),
-                } as Response;
-            }
 
             if (urlStr.includes('/api/file/getFile')) {
                 const body = init?.body ? JSON.parse(String(init.body)) as { path?: string } : {};
@@ -59,6 +52,10 @@ describe('MCP Server Integration', () => {
 
         client = new Client({ name: 'test-client', version: '1.0.0' });
         await client.connect(clientTransport);
+    });
+
+    afterEach(() => {
+        delete process.env.SIYUAN_TOKEN;
     });
 
     describe('Server creation and tool listing', () => {
@@ -108,6 +105,11 @@ describe('MCP Server Integration', () => {
         it('should return error for unknown tool', async () => {
             const result = await client.callTool({ name: 'nonexistent', arguments: {} });
             expect(result.isError).toBe(true);
+        });
+
+        it('should still create the server when SIYUAN_TOKEN is missing', async () => {
+            delete process.env.SIYUAN_TOKEN;
+            await expect(createSiYuanServer()).resolves.toBeTruthy();
         });
     });
 

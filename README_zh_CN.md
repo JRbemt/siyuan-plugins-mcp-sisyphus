@@ -75,6 +75,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 
 ## 版本时间线
 
+- `v0.1.13`：统一要求走标准 token 鉴权请求，自动清理 `SIYUAN_API_URL` 尾部斜杠，并修复空响应导致的 JSON 解析报错
 - `v0.1.12`：新增 `mascot` 聚合 tool，补强 Docker / 环境变量鉴权接入流程，并同步刷新第 8 个工具面的文档与测试
 - `v0.1.11`：新增文档头图设置/清空能力，将资源上传改为本地路径流程并补充大文件确认约束，同时同步更新文档与测试
 - `v0.1.10`：优化 MCP 聚合 tool 的行为一致性，补强权限/路径/帮助细节，并同步更新文档与测试
@@ -136,16 +137,16 @@ pnpm run make-link
   "mcpServers": {
     "siyuan": {
       "command": "node",
-      "args": ["{SIYUAN_PATH}/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
+      "args": ["{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
       "env":{
-        "SIYUAN_API_URL": "http://127.0.0.1:6806/",
+        "SIYUAN_API_URL": "http://127.0.0.1:6806",
         "SIYUAN_TOKEN": "xxxxxx"
       }
     }
   }
 }
 ```
-到设置/关于中获取 API token
+如果你的思源实例未开启 API 鉴权，`SIYUAN_TOKEN` 可以不填；如果开启了 API 鉴权，则必须配置 `SIYUAN_TOKEN`。请到 `设置 -> 关于` 中获取 API token。
 
 路径中的文件夹名必须与 `plugin.json` 的 `name` 一致，即 `siyuan-plugins-mcp-sisyphus`。
 

@@ -75,6 +75,7 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 
 ## Timeline
 
+- `v0.1.13`: Requires standard token-authenticated SiYuan requests, trims trailing slashes from `SIYUAN_API_URL`, and fixes empty-response JSON parse failures
 - `v0.1.12`: Adds the `mascot` aggregated tool, improves Docker/env-based API auth flows, and refreshes docs plus tests for the 8-tool surface
 - `v0.1.11`: Adds document cover actions, switches asset uploads to local-path flows with large-file confirmation, and refreshes docs plus tests
 - `v0.1.10`: Refines aggregated tool behavior, tightens permission/path/help details, and refreshes docs plus test coverage
@@ -136,16 +137,16 @@ pnpm run make-link
   "mcpServers": {
     "siyuan": {
       "command": "node",
-      "args": ["{SIYUAN_PATH}/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
+      "args": ["{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
       "env":{
-        "SIYUAN_API_URL": "http://127.0.0.1:6806/",
+        "SIYUAN_API_URL": "http://127.0.0.1:6806",
         "SIYUAN_TOKEN": "xxxxxx"
       }
     }
   }
 }
 ```
-Get the API token from Settings/About.
+`SIYUAN_TOKEN` is optional when your SiYuan instance does not require API authentication. If API authentication is enabled in SiYuan, you must provide `SIYUAN_TOKEN`. Get the API token from `Settings -> About`.
 
 The folder name in the path must match `plugin.json`: `siyuan-plugins-mcp-sisyphus`.
 

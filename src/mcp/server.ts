@@ -156,27 +156,9 @@ function asCategory(name: string): ToolCategory | null {
 async function initSiYuanClient(): Promise<SiYuanClient> {
     const client = new SiYuanClient();
 
-    // 优先使用环境变量传入的 token（Docker 鉴权场景必需）
     const envToken = process.env.SIYUAN_TOKEN;
     if (envToken) {
         client.setToken(envToken);
-        return client;
-    }
-
-    // 无鉴权场景：尝试从 API 获取 token
-    try {
-        const token = await client.request<string>('/api/system/getApiToken', {});
-        if (token) {
-            client.setToken(token);
-        }
-    } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        const ignorable = e instanceof SyntaxError
-            || /Unexpected end of JSON input/i.test(message)
-            || /JSON/i.test(message);
-        if (!ignorable) {
-            console.error('[MCP] Failed to get API token:', message);
-        }
     }
 
     return client;
@@ -303,7 +285,9 @@ async function main() {
     await server.connect(transport);
 }
 
-main().catch((error) => {
-    console.error('[MCP] Failed to start server:', error instanceof Error ? error.message : String(error));
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((error) => {
+        console.error('[MCP] Failed to start server:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+    });
+}

@@ -15,9 +15,10 @@ export class SiYuanClient {
     private token: string = '';
 
     constructor(config: SiYuanClientConfig = {}) {
-        this.baseUrl = config.baseUrl
+        const rawBaseUrl = config.baseUrl
             || process.env.SIYUAN_API_URL
             || 'http://127.0.0.1:6806';
+        this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
         this.timeout = config.timeout || 30000;
     }
 
