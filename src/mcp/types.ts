@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS, SYSTEM_ACTIONS, TAG_ACTIONS } from "./config";
+import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, MASCOT_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS, SYSTEM_ACTIONS, TAG_ACTIONS } from "./config";
 
 const NotebookConfSchema = z.object({
     name: z.string().optional(),
@@ -74,6 +74,7 @@ export const NotebookActionSchema = z.enum(NOTEBOOK_ACTIONS);
 export const DocumentActionSchema = z.enum(DOCUMENT_ACTIONS);
 export const BlockActionSchema = z.enum(BLOCK_ACTIONS);
 export const FileActionSchema = z.enum(FILE_ACTIONS);
+export const MascotActionSchema = z.enum(MASCOT_ACTIONS);
 
 export const NotebookListSchema = z.object({
     action: z.literal("list"),
@@ -229,6 +230,19 @@ export const DocumentCreateDailyNoteSchema = z.object({
     action: z.literal("create_daily_note"),
     notebook: z.string().describe("Notebook ID"),
     app: z.string().optional().describe("Optional app identifier passed through to SiYuan"),
+});
+
+export const MascotGetBalanceSchema = z.object({
+    action: z.literal("get_balance"),
+});
+
+export const MascotShopSchema = z.object({
+    action: z.literal("shop"),
+});
+
+export const MascotBuySchema = z.object({
+    action: z.literal("buy"),
+    item_id: z.string().describe("Stable shop item ID returned by mascot(action=\"shop\")"),
 });
 
 export const BlockInsertSchema = z.object({

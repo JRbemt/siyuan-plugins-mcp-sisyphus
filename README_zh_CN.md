@@ -198,7 +198,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `get_kramdown` | 获取块的 kramdown 格式内容 |
 | `get_children` | 获取直属子块 |
 | `transfer_ref` | 转移块引用 |
-| `set_attrs` / `get_attrs` | 设置或获取块属性 |
+| `set_attrs` / `get_attrs` | 设置或获取块属性，包括 `custom-riff-decks` 这类闪卡自定义属性 |
 | `exists` | 检查块是否存在 |
 | `info` | 获取块所在根文档元数据 |
 | `breadcrumb` | 获取块的面包屑路径 |
@@ -230,6 +230,8 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `boot_progress` | 获取当前启动进度详情 |
 
 标签不是通过单独的创建 action 生成的。请在块的 Markdown 内容里写成 `#标签#`，这样思源才能识别为真正的标签。
+
+闪卡也不是通过单独的 action 标记的。请对题面块调用 `block(action="set_attrs", id=..., attrs={"custom-riff-decks":"<deck-id>"})` 写入块属性。推荐结构是：用 `h2` 标题作为题面，后续紧邻的块作为答案。
 
 ### `search`
 

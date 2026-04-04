@@ -17,6 +17,7 @@ import { NOTEBOOK_VARIANTS } from './tools/notebook';
 import { SEARCH_VARIANTS } from './tools/search';
 import { SYSTEM_VARIANTS } from './tools/system';
 import { TAG_VARIANTS } from './tools/tag';
+import { MASCOT_VARIANTS } from './tools/mascot';
 import { getSchemaProperties, getSchemaRequired, type ActionVariant, type JsonSchema } from './tools/shared';
 
 interface HelpResourceDefinition {
@@ -38,6 +39,7 @@ const VARIANTS_BY_CATEGORY: Record<ToolCategory, ActionVariant<string>[]> = {
     search: SEARCH_VARIANTS,
     tag: TAG_VARIANTS,
     system: SYSTEM_VARIANTS,
+    mascot: MASCOT_VARIANTS,
 };
 
 function getSchemaRequiredWithoutAction(schema: JsonSchema): string[] {
@@ -168,7 +170,7 @@ function renderToolOverview(): string {
     return [
         '# SiYuan MCP Tool Overview',
         '',
-        'This server exposes 7 aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, and `system`.',
+        'This server exposes 8 aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, `system`, and `mascot`.',
         '',
         '## High-risk actions',
         '',
@@ -182,6 +184,7 @@ function renderToolOverview(): string {
         '## More help',
         '',
         '- Tag creation: write tags into block markdown as `#标签#` so `tag(action="list")` can discover them.',
+        '- Flashcards: set `custom-riff-decks` on a block through `block(action="set_attrs")`; a common pattern is `h2` as the question and following blocks as the answer.',
         '',
         `- Path semantics: \`${DOCUMENT_PATH_RESOURCE_URI}\``,
         `- Common examples: \`${EXAMPLES_RESOURCE_URI}\``,
@@ -278,6 +281,18 @@ function renderExamples(): string {
             dataType: 'markdown',
             data: '#假期# #回家# #放松#',
         }),
+        '',
+        '## Mark a flashcard with block attributes',
+        '',
+        formatJsonExample({
+            action: 'set_attrs',
+            id: '20240318112233-abc123',
+            attrs: {
+                'custom-riff-decks': '20230218211946-2kw8jgx',
+            },
+        }),
+        '',
+        'A common pattern is to use an `h2` heading as the question block and keep the following blocks as the answer.',
         '',
         '## Full-text search',
         '',

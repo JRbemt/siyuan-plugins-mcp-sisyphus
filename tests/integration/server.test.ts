@@ -5,27 +5,43 @@ import { createSiYuanServer } from '@/mcp/server';
 
 describe('MCP Server Integration', () => {
     let client: Client;
+    let storedFiles: Record<string, string>;
 
     beforeEach(async () => {
         global.fetch = vi.fn();
+        storedFiles = {
+            '/data/storage/petal/siyuan-plugins-mcp-sisyphus/notebookPermissions': '{}',
+            '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig': '',
+        };
 
         // Mock all API responses: token + permission load + config read
-        vi.mocked(global.fetch).mockImplementation(async (url) => {
+        vi.mocked(global.fetch).mockImplementation(async (url, init) => {
             const urlStr = String(url);
 
             // Token retrieval
-            if (urlStr.includes('/api/system/getConf')) {
+            if (urlStr.includes('/api/system/getApiToken')) {
                 return {
                     ok: true,
-                    json: async () => ({ code: 0, msg: 'success', data: { conf: { api: { token: 'test-token' } } } }),
+                    json: async () => ({ code: 0, msg: 'success', data: 'test-token' }),
                 } as Response;
             }
 
-            // Permission file read
             if (urlStr.includes('/api/file/getFile')) {
+                const body = init?.body ? JSON.parse(String(init.body)) as { path?: string } : {};
                 return {
                     ok: true,
-                    text: async () => '{}',
+                    text: async () => storedFiles[body.path ?? ''] ?? '',
+                } as Response;
+            }
+
+            if (urlStr.includes('/api/file/putFile')) {
+                const formData = init?.body as FormData;
+                const filePath = String(formData.get('path') ?? '');
+                const file = formData.get('file');
+                storedFiles[filePath] = file instanceof File ? await file.text() : String(file ?? '');
+                return {
+                    ok: true,
+                    json: async () => ({ code: 0, msg: 'success', data: null }),
                 } as Response;
             }
 
@@ -92,6 +108,46 @@ describe('MCP Server Integration', () => {
         it('should return error for unknown tool', async () => {
             const result = await client.callTool({ name: 'nonexistent', arguments: {} });
             expect(result.isError).toBe(true);
+        });
+    });
+
+    describe('Puppy wage tracking', () => {
+        it('increments total calls once for a successful tool call', async () => {
+            await client.callTool({ name: 'system', arguments: { action: 'get_version' } });
+
+            expect(JSON.parse(storedFiles['/data/storage/petal/siyuan-plugins-mcp-sisyphus/puppyStats.json'])).toMatchObject({
+                totalCalls: 1,
+            });
+            expect(JSON.parse(storedFiles['/data/storage/petal/siyuan-plugins-mcp-sisyphus/puppyEvents.json'])).toMatchObject({
+                tool: 'system',
+                action: 'get_version',
+                status: 'success',
+                totalCalls: 1,
+            });
+        });
+
+        it('increments total calls once for a failed tool call', async () => {
+            const result = await client.callTool({ name: 'system', arguments: { action: 'conf', mode: 'get' } });
+
+            expect(result.isError).toBe(true);
+            expect(JSON.parse(storedFiles['/data/storage/petal/siyuan-plugins-mcp-sisyphus/puppyStats.json'])).toMatchObject({
+                totalCalls: 1,
+            });
+            expect(JSON.parse(storedFiles['/data/storage/petal/siyuan-plugins-mcp-sisyphus/puppyEvents.json'])).toMatchObject({
+                tool: 'system',
+                action: 'conf',
+                status: 'error',
+                totalCalls: 1,
+            });
+        });
+
+        it('keeps accumulating across calls without double-counting phases', async () => {
+            await client.callTool({ name: 'system', arguments: { action: 'get_current_time' } });
+            await client.callTool({ name: 'system', arguments: { action: 'get_version' } });
+
+            expect(JSON.parse(storedFiles['/data/storage/petal/siyuan-plugins-mcp-sisyphus/puppyStats.json'])).toMatchObject({
+                totalCalls: 2,
+            });
         });
     });
 });

@@ -3,7 +3,7 @@
 // chunk that SiYuan's plugin loader cannot resolve via require().
 // Keep in sync with src/mcp/config.ts when modifying action lists or config logic.
 
-export const TOOL_CATEGORIES = ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system'] as const;
+export const TOOL_CATEGORIES = ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system', 'mascot'] as const;
 
 export type ToolCategory = typeof TOOL_CATEGORIES[number];
 
@@ -14,6 +14,7 @@ export const FILE_ACTIONS = ['upload_asset', 'render_template', 'render_sprig', 
 export const SEARCH_ACTIONS = ['fulltext', 'query_sql', 'search_tag', 'get_backlinks', 'get_backmentions'] as const;
 export const TAG_ACTIONS = ['list', 'rename', 'remove'] as const;
 export const SYSTEM_ACTIONS = ['workspace_info', 'network', 'changelog', 'conf', 'sys_fonts', 'boot_progress', 'push_msg', 'push_err_msg', 'get_version', 'get_current_time'] as const;
+export const MASCOT_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
 
 export type NotebookAction = typeof NOTEBOOK_ACTIONS[number];
 export type DocumentAction = typeof DOCUMENT_ACTIONS[number];
@@ -22,6 +23,7 @@ export type FileAction = typeof FILE_ACTIONS[number];
 export type SearchAction = typeof SEARCH_ACTIONS[number];
 export type TagAction = typeof TAG_ACTIONS[number];
 export type SystemAction = typeof SYSTEM_ACTIONS[number];
+export type MascotAction = typeof MASCOT_ACTIONS[number];
 
 export type ToolActionMap = {
     notebook: NotebookAction;
@@ -31,6 +33,7 @@ export type ToolActionMap = {
     search: SearchAction;
     tag: TagAction;
     system: SystemAction;
+    mascot: MascotAction;
 };
 
 export interface CategoryToolConfig<Action extends string = string> {
@@ -50,6 +53,7 @@ export type ToolConfig = {
     search: CategoryToolConfig<SearchAction>;
     tag: CategoryToolConfig<TagAction>;
     system: CategoryToolConfig<SystemAction>;
+    mascot: CategoryToolConfig<MascotAction>;
 };
 
 export const LEGACY_TOOL_TO_ACTION: Record<string, { category: ToolCategory; action: string }> = {
@@ -116,6 +120,9 @@ export const LEGACY_TOOL_TO_ACTION: Record<string, { category: ToolCategory; act
     get_system_conf: { category: 'system', action: 'conf' },
     get_sys_fonts: { category: 'system', action: 'sys_fonts' },
     get_boot_progress: { category: 'system', action: 'boot_progress' },
+    get_mascot_balance: { category: 'mascot', action: 'get_balance' },
+    get_mascot_shop: { category: 'mascot', action: 'shop' },
+    buy_mascot_item: { category: 'mascot', action: 'buy' },
 };
 
 const ACTIONS_BY_CATEGORY: { [Category in ToolCategory]: readonly ToolActionMap[Category][] } = {
@@ -126,6 +133,7 @@ const ACTIONS_BY_CATEGORY: { [Category in ToolCategory]: readonly ToolActionMap[
     search: SEARCH_ACTIONS,
     tag: TAG_ACTIONS,
     system: SYSTEM_ACTIONS,
+    mascot: MASCOT_ACTIONS,
 };
 
 const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
@@ -136,6 +144,7 @@ const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
     search: new Set(),
     tag: new Set(['remove']),
     system: new Set(['workspace_info']),
+    mascot: new Set(),
 };
 
 const createActionsRecord = <Action extends string>(
@@ -179,6 +188,10 @@ export function buildDefaultToolConfig(): ToolConfig {
         system: {
             enabled: true,
             actions: createActionsRecord(SYSTEM_ACTIONS, ['network', 'changelog', 'conf', 'sys_fonts', 'boot_progress', 'push_msg', 'push_err_msg', 'get_version', 'get_current_time']),
+        },
+        mascot: {
+            enabled: true,
+            actions: createActionsRecord(MASCOT_ACTIONS, ['get_balance', 'shop', 'buy']),
         },
     };
 }

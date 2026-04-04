@@ -2,13 +2,21 @@
     import { onMount } from "svelte";
     import { showMessage } from "siyuan";
 
-    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type BlockAction, type DocumentAction, type FileAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
-    import { loadPersistedToolConfig, savePersistedToolConfig } from "./tool-config-storage";
+    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type BlockAction, type DocumentAction, type FileAction, type MascotAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
+    import {
+    buildDefaultPuppySettings,
+    loadPersistedPuppySettings,
+    loadPersistedToolConfig,
+    normalizePuppySettings,
+    savePersistedPuppySettings,
+    savePersistedToolConfig,
+    type PuppySettings,
+} from "./tool-config-storage";
     import SettingPanel from "../libs/components/setting-panel.svelte";
 
     export let plugin: any;
 
-    type GroupAction = NotebookAction | DocumentAction | BlockAction | FileAction | SearchAction | TagAction | SystemAction;
+    type GroupAction = NotebookAction | DocumentAction | BlockAction | FileAction | SearchAction | TagAction | SystemAction | MascotAction;
     type NotebookPermission = 'none' | 'r' | 'rw' | 'rwd';
     const VALID_PERMISSIONS: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
     const LEGACY_PERMISSION_MAP = {
@@ -148,15 +156,30 @@
                 { key: "get_current_time", title: "Get Current Time", description: "Get the current system time." },
             ],
         },
+        {
+            category: "mascot",
+            icon: "🐾",
+            groupKey: "Mascot Tool",
+            actions: [
+                { key: "get_balance", title: "Get Balance", description: "Get the mascot's current balance." },
+                { key: "shop", title: "Shop", description: "List the mascot shop inventory." },
+                { key: "buy", title: "Buy", description: "Buy one item from the mascot shop by item ID." },
+            ],
+        },
     ];
 
+    const PUPPY_GROUP_KEY = "Mascot";
+    const PUPPY_GROUP_LABEL = "🐾 Mascot";
     const PERM_GROUP_KEY = "Permissions";
     const PERM_GROUP_LABEL = "🔒 Permissions";
-    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`)];
+    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`), PUPPY_GROUP_LABEL];
 
     let config: ToolConfig = buildDefaultToolConfig();
     let groups = defaultGroups;
     let focusGroup = defaultGroups[0];
+
+    let puppySettings: PuppySettings = buildDefaultPuppySettings();
+    let puppyItems: ISettingItem[] = [];
 
     let notebookItems: ISettingItem[] = [];
     let documentItems: ISettingItem[] = [];
@@ -165,7 +188,6 @@
     let searchItems: ISettingItem[] = [];
     let tagItems: ISettingItem[] = [];
     let systemItems: ISettingItem[] = [];
-
     // Permissions tab state
     interface NotebookInfo { id: string; name: string; }
     let notebooks: NotebookInfo[] = [];
@@ -252,7 +274,57 @@
         }));
     }
 
+    function buildPuppyItems(): ISettingItem[] {
+        return [
+            buildToolToggleItem(GROUP_DEFINITIONS[7]),
+            ...buildActionItems(GROUP_DEFINITIONS[7]),
+            {
+                type: "checkbox",
+                key: "puppy__visible",
+                value: puppySettings.visible,
+                title: getLabel("puppy_visible_title", "Show Mascot"),
+                description: getLabel("puppy_visible_desc", "Show or hide the mascot on screen."),
+            },
+            {
+                type: "checkbox",
+                key: "puppy__showClickHint",
+                value: puppySettings.showClickHint,
+                title: getLabel("puppy_showClickHint_title", "Show Click Hint"),
+                description: getLabel("puppy_showClickHint_desc", "Show a hint on click that this mascot is provided by the MCP plugin and can be turned off here."),
+            },
+            {
+                type: "checkbox",
+                key: "puppy__testModeEnabled",
+                value: puppySettings.testModeEnabled,
+                title: getLabel("puppy_testMode_title", "Random Mascot Test"),
+                description: getLabel("puppy_testMode_desc", "Randomly cycle real MCP actions for animation testing without calling tools."),
+                layout: "inline",
+                children: [
+                    ...(puppySettings.testModeEnabled
+                        ? [{
+                            type: "number",
+                            key: "puppy__testModeIntervalMs",
+                            value: puppySettings.testModeIntervalMs,
+                            title: getLabel("puppy_testMode_interval_title", "Interval"),
+                            description: getLabel("puppy_testMode_interval_desc", "Delay between random test actions."),
+                            inputCompact: true,
+                            unit: "ms",
+                        }]
+                        : []),
+                ],
+            },
+            {
+                type: "checkbox",
+                key: "puppy__showBubble",
+                value: puppySettings.showBubble,
+                title: getLabel("puppy_showBubble_title", "Show Bubble"),
+                description: getLabel("puppy_showBubble_desc", "Show a pixel-style status bubble with tool-aware offsets and extra spacing for errors."),
+            },
+        ];
+    }
+
     function refreshItems() {
+        puppyItems = buildPuppyItems();
         notebookItems = [buildToolToggleItem(GROUP_DEFINITIONS[0]), ...buildActionItems(GROUP_DEFINITIONS[0])];
         documentItems = [buildToolToggleItem(GROUP_DEFINITIONS[1]), ...buildActionItems(GROUP_DEFINITIONS[1])];
         blockItems = [buildToolToggleItem(GROUP_DEFINITIONS[2]), ...buildActionItems(GROUP_DEFINITIONS[2])];
@@ -263,12 +335,13 @@
         permItems = buildPermItems();
     }
 
+    $: puppyGroupLabel = `🐾 ${getLabel(PUPPY_GROUP_KEY, PUPPY_GROUP_LABEL)}`;
     $: permGroupLabel = `🔒 ${getLabel(PERM_GROUP_KEY, PERM_GROUP_LABEL)}`;
-    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`)];
+    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.slice(0, 7).map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), puppyGroupLabel];
     $: if (!groups.includes(focusGroup)) {
         focusGroup = groups[0];
     }
-    $: config, notebooks, permissions, refreshItems();
+    $: config, notebooks, permissions, puppySettings, refreshItems();
 
     async function loadNotebooks() {
         try {
@@ -288,6 +361,7 @@
 
     onMount(async () => {
         config = await loadPersistedToolConfig(plugin);
+        puppySettings = await loadPersistedPuppySettings(plugin);
 
         const savedPerms = await plugin?.loadData("notebookPermissions");
         if (savedPerms && typeof savedPerms === "object") {
@@ -329,6 +403,13 @@
         };
     }
 
+    async function persistPuppySettings() {
+        if (plugin) {
+            puppySettings = await savePersistedPuppySettings(puppySettings, plugin);
+            plugin.updatePuppyTestSettings?.(puppySettings);
+        }
+    }
+
     async function persistConfig() {
         if (plugin) {
             config = await savePersistedToolConfig(config, plugin);
@@ -348,6 +429,40 @@
 
     const onChanged = async (event: CustomEvent<ChangeEvent>) => {
         const { key, value } = event.detail;
+
+        if (key === "puppy__visible") {
+            puppySettings = { ...puppySettings, visible: Boolean(value) };
+            await persistPuppySettings();
+            return;
+        }
+
+        if (key === "puppy__testModeEnabled") {
+            puppySettings = { ...puppySettings, testModeEnabled: Boolean(value) };
+            await persistPuppySettings();
+            return;
+        }
+
+        if (key === "puppy__showBubble") {
+            puppySettings = { ...puppySettings, showBubble: Boolean(value) };
+            await persistPuppySettings();
+            return;
+        }
+
+        if (key === "puppy__showClickHint") {
+            puppySettings = { ...puppySettings, showClickHint: Boolean(value) };
+            await persistPuppySettings();
+            return;
+        }
+
+        if (key === "puppy__testModeIntervalMs") {
+            const numeric = Number(value);
+            puppySettings = {
+                ...puppySettings,
+                testModeIntervalMs: Number.isFinite(numeric) ? Math.max(800, Math.min(10000, Math.floor(numeric))) : puppySettings.testModeIntervalMs,
+            };
+            await persistPuppySettings();
+            return;
+        }
 
         if (key.startsWith("perm__") && key !== "perm__hint") {
             const notebookId = key.slice("perm__".length);
@@ -391,7 +506,9 @@
 
     export async function resetDefaults() {
         config = normalizeToolConfig(buildDefaultToolConfig());
+        puppySettings = normalizePuppySettings(buildDefaultPuppySettings());
         await persistConfig();
+        await persistPuppySettings();
         showMessage(plugin?.i18n?.mcpConfigReset || "🔄 MCP Tools configuration reset to defaults");
     }
 </script>
@@ -422,6 +539,7 @@
         <SettingPanel group={groups[5]} settingItems={searchItems} display={focusGroup === groups[5]} on:changed={onChanged} />
         <SettingPanel group={groups[6]} settingItems={tagItems} display={focusGroup === groups[6]} on:changed={onChanged} />
         <SettingPanel group={groups[7]} settingItems={systemItems} display={focusGroup === groups[7]} on:changed={onChanged} />
+        <SettingPanel group={puppyGroupLabel} settingItems={puppyItems} display={focusGroup === puppyGroupLabel} on:changed={onChanged} />
     </div>
 </div>
 

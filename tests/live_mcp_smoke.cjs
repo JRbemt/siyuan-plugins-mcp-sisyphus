@@ -185,6 +185,7 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /Common actions: .*get_children/);
         assert.match(descriptions.block, /Additional actions: .*move/);
         assert.match(descriptions.block, /Read siyuan:\/\/help\/action\/block\/\{action\} for details/);
+        assert.match(descriptions.block, /custom-riff-decks/);
         assert.match(descriptions.file, /Common actions: upload_asset, export_md/);
         assert.match(descriptions.file, /Additional actions: render_template, render_sprig, export_resources/);
         assert.match(descriptions.file, /confirmLargeFile/);
@@ -237,17 +238,26 @@ async function assertDefaultToolList() {
         assert.match(toolOverviewText, /document\(action="move"\)/);
         assert.match(toolOverviewText, /7 aggregated tools/);
         assert.match(toolOverviewText, /#标签#/);
+        assert.match(toolOverviewText, /custom-riff-decks/);
 
         const documentPathText = await readResourceText(client, 'siyuan://help/document-path-semantics');
         assert.match(documentPathText, /Human-readable path/);
         assert.match(documentPathText, /Storage path/);
         assert.match(documentPathText, /existing destination document/);
 
+        const examplesText = await readResourceText(client, 'siyuan://help/examples');
+        assert.match(examplesText, /Mark a flashcard with block attributes/);
+        assert.match(examplesText, /custom-riff-decks/);
+
         const actionHelpText = await readResourceText(client, 'siyuan://help/action/document/move');
         assert.match(actionHelpText, /document\(action="move"\)/);
         assert.match(actionHelpText, /fromIDs \+ toID/);
         assert.match(actionHelpText, /fromPaths \+ toNotebook \+ toPath/);
         assert.match(actionHelpText, /existing destination document/);
+
+        const blockSetAttrsHelpText = await readResourceText(client, 'siyuan://help/action/block/set_attrs');
+        assert.match(blockSetAttrsHelpText, /custom-riff-decks/);
+        assert.match(blockSetAttrsHelpText, /flashcard/i);
 
         const validationError = (await callToolJson(client, 'document', {
             action: 'rename',

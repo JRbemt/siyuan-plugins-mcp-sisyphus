@@ -15,6 +15,8 @@ import { callNotebookTool, listNotebookTools } from './tools/notebook';
 import { callSearchTool, listSearchTools } from './tools/search';
 import { callSystemTool, listSystemTools } from './tools/system';
 import { callTagTool, listTagTools } from './tools/tag';
+import { earnPuppyBalance, readPuppyStats, writePuppyEvent } from './puppy-state';
+import { callMascotTool, listMascotTools } from './tools/mascot';
 
 const PLUGIN_CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
 
@@ -58,6 +60,11 @@ Tag creation semantics:
 - There is no direct create action for tags.
 - To create a real SiYuan tag in block markdown, use #标签# with both leading and trailing # characters.
 - Example: block(action="update", dataType="markdown", data="#假期# #回家#")
+
+Flashcard semantics:
+- To mark a block as a flashcard, set the "custom-riff-decks" attribute with block(action="set_attrs", ...).
+- A common pattern is to use an h2 heading as the question block and keep the following blocks as the answer.
+- Example: block(action="set_attrs", id="20240318112233-abc123", attrs={"custom-riff-decks":"20230218211946-2kw8jgx"})
 `;
 }
 
@@ -138,6 +145,7 @@ function getToolsByConfig(config: ToolConfig) {
         ...listSearchTools(config.search),
         ...listTagTools(config.tag),
         ...listSystemTools(config.system),
+        ...listMascotTools(config.mascot),
     ];
 }
 
@@ -199,6 +207,7 @@ export async function createSiYuanServer(): Promise<Server> {
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
+        const action = typeof args?.action === 'string' ? args.action : 'unknown';
         const category = asCategory(name);
         if (!category) {
             return {
@@ -215,15 +224,55 @@ export async function createSiYuanServer(): Promise<Server> {
             };
         }
 
+        const puppyStats = category === 'mascot'
+            ? await readPuppyStats(client)
+            : await earnPuppyBalance(client, `${name}/${action}`);
+
+        await writePuppyEvent(client, {
+            tool: name,
+            action,
+            status: 'running',
+            totalCalls: puppyStats.totalCalls,
+            balance: puppyStats.balance,
+        });
+
+        let result: { content: { type: 'text'; text: string }[]; isError?: boolean };
         switch (category) {
-            case 'notebook': return callNotebookTool(client, args, config.notebook, permMgr);
-            case 'document': return callDocumentTool(client, args, config.document, permMgr);
-            case 'block': return callBlockTool(client, args, config.block, permMgr);
-            case 'file': return callFileTool(client, args, config.file, permMgr);
-            case 'search': return callSearchTool(client, args, config.search, permMgr);
-            case 'tag': return callTagTool(client, args, config.tag, permMgr);
-            case 'system': return callSystemTool(client, args, config.system, permMgr);
+            case 'notebook': result = await callNotebookTool(client, args, config.notebook, permMgr); break;
+            case 'document': result = await callDocumentTool(client, args, config.document, permMgr); break;
+            case 'block': result = await callBlockTool(client, args, config.block, permMgr); break;
+            case 'file': result = await callFileTool(client, args, config.file, permMgr); break;
+            case 'search': result = await callSearchTool(client, args, config.search, permMgr); break;
+            case 'tag': result = await callTagTool(client, args, config.tag, permMgr); break;
+            case 'system': result = await callSystemTool(client, args, config.system, permMgr); break;
+            case 'mascot': result = await callMascotTool(client, args, config.mascot, permMgr); break;
         }
+
+        const latestStats = await readPuppyStats(client);
+        let mascotEventMeta: { itemId?: string; itemLabel?: string; itemType?: string; itemEmoji?: string } = {};
+        if (category === 'mascot' && !result.isError) {
+            try {
+                const payload = JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>;
+                mascotEventMeta = {
+                    itemId: typeof payload.item_id === 'string' ? payload.item_id : undefined,
+                    itemLabel: typeof payload.item === 'string' ? payload.item : undefined,
+                    itemType: typeof payload.type === 'string' ? payload.type : undefined,
+                    itemEmoji: typeof payload.emoji === 'string' ? payload.emoji : undefined,
+                };
+            } catch {
+                mascotEventMeta = {};
+            }
+        }
+        await writePuppyEvent(client, {
+            tool: name,
+            action,
+            status: result.isError ? 'error' : 'success',
+            totalCalls: latestStats.totalCalls,
+            balance: latestStats.balance,
+            ...mascotEventMeta,
+        });
+
+        return result;
     });
 
     return server;

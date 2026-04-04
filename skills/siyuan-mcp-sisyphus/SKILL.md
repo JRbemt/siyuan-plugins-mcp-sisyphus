@@ -109,7 +109,7 @@ Before calling any of these, describe the action and wait for explicit user agre
 | `get_kramdown` | read | Returns block content in kramdown format with IAL attributes |
 | `get_children` | read | Works with both document IDs AND block IDs. Returns direct children |
 | `transfer_ref` | write | `fromID` + `toID`. `refIDs` is optional |
-| `set_attrs` / `get_attrs` | write/read | Block custom attributes |
+| `set_attrs` / `get_attrs` | write/read | Block custom attributes, including `custom-riff-decks` for flashcards |
 
 ### `file`
 
@@ -133,6 +133,16 @@ Before calling any of these, describe the action and wait for explicit user agre
 ### Tag creation
 
 There is no direct `tag.create` action. To create a real SiYuan tag, write it into block markdown as `#标签#` with both leading and trailing `#`.
+
+### Flashcard marking
+
+There is no dedicated flashcard action. To mark a block as a flashcard, call `block(action="set_attrs", id=..., attrs={"custom-riff-decks":"<deck-id>"})`.
+
+Recommended structure:
+
+- Use an `h2` heading as the question block
+- Keep the following blocks as the answer content
+- Set `custom-riff-decks` on the question block, not on every answer block
 
 ## MCP Help Resources
 

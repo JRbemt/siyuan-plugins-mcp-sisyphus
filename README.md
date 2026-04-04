@@ -198,7 +198,7 @@ Cover semantics: `set_cover` and `clear_cover` are semantic wrappers around the 
 | `get_kramdown` | Get block content in kramdown format |
 | `get_children` | Get direct child blocks |
 | `transfer_ref` | Transfer block references |
-| `set_attrs` / `get_attrs` | Set or get block attributes |
+| `set_attrs` / `get_attrs` | Set or get block attributes, including custom metadata such as `custom-riff-decks` for flashcards |
 | `exists` | Check whether a block exists |
 | `info` | Get root document metadata for a block |
 | `breadcrumb` | Get breadcrumb path for a block |
@@ -230,6 +230,8 @@ Cover semantics: `set_cover` and `clear_cover` are semantic wrappers around the 
 | `boot_progress` | Get current boot progress details |
 
 Tags are not created through a dedicated tag action. Write tags into block markdown as `#tag#` so SiYuan can recognize them.
+
+Flashcards are marked through block attributes rather than a dedicated action. Use `block(action="set_attrs", id=..., attrs={"custom-riff-decks":"<deck-id>"})` on the question block. A common pattern is to use an `h2` heading as the question and keep the following blocks as the answer.
 
 ### `search`
 

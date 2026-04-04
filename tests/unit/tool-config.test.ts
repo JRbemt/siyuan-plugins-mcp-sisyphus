@@ -10,6 +10,9 @@ describe('setting tool config', () => {
         expect(config.document.actions.clear_cover).toBe(true);
         expect(config.file.actions.upload_asset).toBe(true);
         expect(config.file.uploadLargeFileThresholdMB).toBe(10);
+        expect(config.mascot.actions.get_balance).toBe(true);
+        expect(config.mascot.actions.shop).toBe(true);
+        expect(config.mascot.actions.buy).toBe(true);
     });
 
     it('keeps nested file config action toggles and upload threshold together', () => {
@@ -29,6 +32,23 @@ describe('setting tool config', () => {
         expect(config.file.actions.upload_asset).toBe(false);
         expect(config.file.actions.render_template).toBe(true);
         expect(config.file.actions.render_sprig).toBe(true);
+    });
+
+    it('keeps mascot nested action toggles', () => {
+        const config = normalizeToolConfig({
+            mascot: {
+                enabled: true,
+                actions: {
+                    get_balance: true,
+                    shop: false,
+                },
+            },
+        });
+
+        expect(config.mascot.enabled).toBe(true);
+        expect(config.mascot.actions.get_balance).toBe(true);
+        expect(config.mascot.actions.shop).toBe(false);
+        expect(config.mascot.actions.buy).toBe(true);
     });
 
     it.each([

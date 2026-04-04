@@ -7,6 +7,7 @@ import {
     type SearchAction,
     type SystemAction,
     type TagAction,
+    type MascotAction,
     type ToolCategory,
 } from './config';
 
@@ -31,6 +32,7 @@ export const BLOCK_GUIDANCE: string[] = [
     'block(action="prepend") or block(action="append") with a document ID targets the document start or end.',
     'block(action="prepend") or block(action="append") with a block ID targets that block\'s child list.',
     'To create real SiYuan tags inside markdown content, use the syntax #标签# with both leading and trailing # characters.',
+    'To mark a block as a flashcard, set its "custom-riff-decks" attribute via block(action="set_attrs"). A common pattern is to use an h2 heading as the question and the following blocks as the answer.',
     'block(action="fold") and block(action="unfold") require a foldable block ID, not a document ID.',
     'block(action="recent_updated") is read-only; MCP filters unreadable notebooks first and then applies count.',
 ];
@@ -54,6 +56,12 @@ export const SYSTEM_GUIDANCE: string[] = [
     'system(action="conf") returns masked configuration, not raw secrets.',
     'Use system(action="conf", mode="summary") first, then mode="get" + keyPath such as conf.appearance.mode or conf.langs[0].',
     'Use system(action="sys_fonts", mode="summary") first, then mode="list" with offset/limit/query for paginated inspection.',
+];
+
+export const MASCOT_GUIDANCE: string[] = [
+    'mascot actions operate on the cat’s spendable balance.',
+    'Use mascot(action="shop") to list available items and their stable item IDs.',
+    'Use mascot(action="buy", item_id=...) to purchase an item and spend from the balance.',
 ];
 
 export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
@@ -86,6 +94,7 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
     prepend: 'parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
     append: 'parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #标签# syntax in markdown when you want SiYuan to register a real tag.',
     update: 'Use dataType + data + id to replace block content. Returns a slim success object instead of raw DOM operations. If the content should create tags, write them as #标签#.',
+    set_attrs: 'Use attrs to write block attributes such as custom metadata. To mark a flashcard, set {"custom-riff-decks":"<deck-id>"} on the question block, commonly an h2 heading.',
     delete: 'This action requires explicit user confirmation.',
     move: 'Provide id plus previousID, parentID, or both to describe the destination. On success, MCP returns a structured success object instead of SiYuan\'s raw null. This action requires explicit user confirmation.',
     fold: 'Use a foldable block ID.',
@@ -139,6 +148,12 @@ export const SYSTEM_ACTION_HINTS: Partial<Record<SystemAction, string>> = {
     get_current_time: 'Returns the current system time as {currentTime} epoch milliseconds and {iso} ISO 8601 text.',
 };
 
+export const MASCOT_ACTION_HINTS: Partial<Record<MascotAction, string>> = {
+    get_balance: 'Returns the cat’s current balance and lifetime earned count.',
+    shop: 'Returns the current mascot shop inventory including stable item IDs, labels, cost, type, and emoji.',
+    buy: 'Buys one shop item by item_id and deducts its configured cost from balance.',
+};
+
 export const TOOL_GUIDANCE_BY_CATEGORY: Record<ToolCategory, string[]> = {
     notebook: NOTEBOOK_GUIDANCE,
     document: DOCUMENT_GUIDANCE,
@@ -147,6 +162,7 @@ export const TOOL_GUIDANCE_BY_CATEGORY: Record<ToolCategory, string[]> = {
     search: SEARCH_GUIDANCE,
     tag: TAG_GUIDANCE,
     system: SYSTEM_GUIDANCE,
+    mascot: MASCOT_GUIDANCE,
 };
 
 export const TOOL_ACTION_HINTS: Record<ToolCategory, Partial<Record<string, string>>> = {
@@ -157,6 +173,7 @@ export const TOOL_ACTION_HINTS: Record<ToolCategory, Partial<Record<string, stri
     search: SEARCH_ACTION_HINTS,
     tag: TAG_ACTION_HINTS,
     system: SYSTEM_ACTION_HINTS,
+    mascot: MASCOT_ACTION_HINTS,
 };
 
 export { ACTIONS_BY_CATEGORY } from './config';
