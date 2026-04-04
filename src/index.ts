@@ -8,13 +8,7 @@ import "./index.scss";
 import { loadPersistedToolConfig, savePersistedToolConfig } from "@/setting/tool-config-storage";
 import McpConfig from "@/setting/mcp-config.svelte";
 
-/** 思源 API 端口写死，不读写 menu-config.json */
-const MCP_API_URL = "http://127.0.0.1:6806";
-
 export default class SiyuanMCP extends Plugin {
-
-    /** 供其他模块读取，端口固定 */
-    mcpSettings = { apiUrl: MCP_API_URL };
 
     async onload() {
         const normalized = await loadPersistedToolConfig(this);
