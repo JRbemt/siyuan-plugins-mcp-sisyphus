@@ -236,7 +236,7 @@ describe('buildAggregatedTool', () => {
 
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe('notebook');
-        expect(result[0].inputSchema.properties?.action?.enum).toEqual(['list', 'create']);
+        expect(result[0].inputSchema.properties?.action?.enum).toEqual(['list', 'create', 'help']);
     });
 
     it('should include description with action list', () => {

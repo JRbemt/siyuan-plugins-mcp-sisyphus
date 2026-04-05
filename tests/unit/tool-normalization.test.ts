@@ -19,10 +19,12 @@ vi.mock('@/mcp/tools/context', () => ({
 vi.mock('@/api/file', () => ({
     uploadAsset: vi.fn(),
     exportMdContent: vi.fn(),
+    renderTemplate: vi.fn(),
 }));
 
 vi.mock('@/api/document', () => ({
     getDoc: vi.fn(),
+    getHPathByID: vi.fn(),
 }));
 
 vi.mock('@/api/attribute', () => ({
@@ -61,7 +63,9 @@ describe('tool result normalization', () => {
 
         vi.mocked(fileApi.uploadAsset).mockReset();
         vi.mocked(fileApi.exportMdContent).mockReset();
+        vi.mocked(fileApi.renderTemplate).mockReset();
         vi.mocked(documentApi.getDoc).mockReset();
+        vi.mocked(documentApi.getHPathByID).mockReset();
         vi.mocked(attributeApi.setBlockAttrs).mockReset();
         vi.mocked(blockApi.updateBlock).mockReset();
         vi.mocked(blockApi.getBlockKramdown).mockReset();
@@ -217,6 +221,29 @@ describe('tool result normalization', () => {
         expect(parsed.reason).toBe('file_too_large');
         expect(parsed.thresholdMB).toBe(1);
         expect(parsed.thresholdBytes).toBe(1024 * 1024);
+    });
+
+    it('returns a workspace-specific error for render_template paths outside the workspace', async () => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.renderTemplate).mockRejectedValue(new Error('Path [/tmp/siyuan.tpl] is not in workspace'));
+
+        const result = await callFileTool(client, {
+            action: 'render_template',
+            id: 'doc-1',
+            path: '/tmp/siyuan.tpl',
+        }, enabledActions('render_template'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            error: {
+                type: 'api_error',
+                tool: 'file',
+                action: 'render_template',
+                message: 'Path [/tmp/siyuan.tpl] is not in workspace',
+                reason: 'path_not_in_workspace',
+                workspacePathRequired: true,
+                hint: 'The template path must point to a file inside the SiYuan workspace, not an arbitrary local path such as /tmp/... or your repo checkout.',
+            },
+        });
     });
 
     it('keeps html mode routed through document.getDoc', async () => {

@@ -1,5 +1,6 @@
 import {
     ACTIONS_BY_CATEGORY,
+    type AvAction,
     type BlockAction,
     type DocumentAction,
     type FileAction,
@@ -15,7 +16,8 @@ export const NOTEBOOK_GUIDANCE: string[] = [
     'Use notebook IDs for open, close, rename, get_conf, and set_conf.',
     'notebook(action="get_permissions") supports notebook="all" (or omission) for all notebooks, and a specific notebook ID for one notebook.',
     'notebook(action="remove") requires explicit user confirmation before execution.',
-    'notebook(action="get_child_docs") returns direct child documents at the notebook root and reports clearer notebook-state errors.',
+    'notebook(action="get_child_docs") returns direct child documents at the notebook root and retries short closed-or-initializing windows before failing.',
+    'Right after notebook(action="close"), get_child_docs may still return a retryable closed-or-initializing error; open the notebook first or retry shortly.',
 ];
 
 export const DOCUMENT_GUIDANCE: string[] = [
@@ -26,6 +28,7 @@ export const DOCUMENT_GUIDANCE: string[] = [
     'document(action="set_cover") and document(action="clear_cover") are semantic wrappers around the document root block\'s "title-img" attribute.',
     'document(action="search_docs") remains title-based, but MCP now post-filters results by notebook permission and optional storage path scope.',
     'For recently created documents, get_ids may briefly lag behind create because it depends on SiYuan indexing; retry if needed.',
+    'document(action="get_hpath", id=...) may hit the same short indexing delay right after create; MCP retries briefly and then returns a timing-specific hint if indexing still has not settled.',
 ];
 
 export const BLOCK_GUIDANCE: string[] = [
@@ -35,6 +38,16 @@ export const BLOCK_GUIDANCE: string[] = [
     'To mark a block as a flashcard, set its "custom-riff-decks" attribute via block(action="set_attrs"). A common pattern is to use an h2 heading as the question and the following blocks as the answer.',
     'block(action="fold") and block(action="unfold") require a foldable block ID, not a document ID.',
     'block(action="recent_updated") is read-only; MCP filters unreadable notebooks first and then applies count.',
+    'block(action="recent_updated") now presents the document-grouped summary as the primary user-facing view while keeping the raw block stream for advanced consumers.',
+];
+
+export const AV_GUIDANCE: string[] = [
+    'AV actions operate on real SiYuan attribute views (database blocks), not Markdown tables.',
+    'The current MCP AV tool supports operating on existing AVs and duplicating database blocks, but it does not create a brand-new AV from scratch.',
+    'Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cell") or av(action="batch_set_cells").',
+    'For cell writes, rowID must be the database row item ID, not the original source block ID. add_rows now returns blockID -> rowID mappings to help chain writes safely.',
+    'AV permission checks are resolved from existing row/block context; a completely empty AV may be unreadable or unwritable until its owning context can be resolved.',
+    'av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.',
 ];
 
 export const FILE_GUIDANCE: string[] = [
@@ -42,6 +55,7 @@ export const FILE_GUIDANCE: string[] = [
     'If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.',
     'file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.',
     'file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.',
+    'file(action="render_template") requires a template path inside the SiYuan workspace; arbitrary local paths like /tmp/... are rejected by the kernel.',
 ];
 
 export const TAG_GUIDANCE: string[] = [
@@ -68,7 +82,7 @@ export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
     remove: 'This action requires explicit user confirmation.',
     set_icon: 'Use a notebook ID + icon. Prefer a Unicode hex code string such as "1f4d4" for 📔; raw emoji characters may not render correctly.',
     get_permissions: 'Omit notebook or pass notebook="all" to return all notebook permissions. Pass a specific notebook ID to return one notebook only.',
-    get_child_docs: 'Use a notebook ID. Returns direct child documents at the notebook root and distinguishes notebook-not-found / closed-or-initializing failures.',
+    get_child_docs: 'Use a notebook ID. Returns direct child documents at the notebook root, retries short initialization windows, and distinguishes notebook-not-found / closed-or-initializing failures.',
 };
 
 export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
@@ -76,7 +90,7 @@ export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     rename: 'Use either id + title or notebook + path + title.',
     remove: 'Use either id or notebook + path. This action requires explicit user confirmation.',
     move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.',
-    get_hpath: 'Use either id or notebook + path.',
+    get_hpath: 'Use either id or notebook + path. Right after create, a short retry may still be needed while SiYuan indexing catches up.',
     get_ids: 'Use notebook + path, where path is human-readable (same format as action="create"). This is the recommended way to resolve document IDs from paths. Right after create, a short retry may be needed while SiYuan indexing catches up.',
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
     get_child_docs: 'Use a document ID. Returns direct child documents only.',
@@ -104,12 +118,26 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
     info: 'Returns root document positioning metadata for a block.',
     breadcrumb: 'Optional excludeTypes removes matching block types from the breadcrumb.',
     dom: 'Returns rendered DOM, useful for preview-style consumers.',
-    recent_updated: 'Returns recent updates across the workspace, then MCP filters unreadable notebooks and applies count when provided.',
+    recent_updated: 'Returns recent updates across the workspace, then MCP filters unreadable notebooks and applies count when provided. documents is the primary user-facing summary; items remains the raw block stream.',
     word_count: 'Provide one or more block IDs to receive aggregate stat data.',
+};
+
+export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
+    get: 'Use an attribute view ID. Returns the full AV payload after permission checks.',
+    search: 'Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons.',
+    add_rows: 'Use avID + blockIDs to add existing blocks as rows. Success results include blockID -> rowID mappings when MCP can re-read them from the AV. Optional blockID/viewID/groupID/previousID refine the insertion target.',
+    remove_rows: 'Use avID + srcIDs to remove rows from the AV.',
+    add_column: 'Use avID + keyName + keyType, and optionally keyID. MCP generates keyID automatically when omitted. For multi-select columns, use keyType="mSelect".',
+    remove_column: 'Use avID + keyID. removeRelationDest only matters for relation columns.',
+    set_cell: 'Use avID + rowID + columnID + valueType and the matching typed field. rowID must be the AV row item ID, not the source block ID. Example: valueType="number" with number=12.5.',
+    batch_set_cells: 'Use avID + items[]. Each item requires rowID + columnID + valueType and its matching typed field. MCP rejects source block IDs and suggests the matching row item ID when it can.',
+    duplicate_block: 'Duplicates the database block for an existing AV and verifies that the returned avID + blockID are resolvable before reporting success.',
+    get_primary_key_values: 'Returns the AV name plus primary-key rows, with optional keyword/page/pageSize filtering.',
 };
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
     upload_asset: 'Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.',
+    render_template: 'Use id + path, where path points to a template file inside the SiYuan workspace. Local filesystem paths outside the workspace are rejected by the kernel.',
     export_resources: 'Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation.',
 };
 
@@ -158,6 +186,7 @@ export const TOOL_GUIDANCE_BY_CATEGORY: Record<ToolCategory, string[]> = {
     notebook: NOTEBOOK_GUIDANCE,
     document: DOCUMENT_GUIDANCE,
     block: BLOCK_GUIDANCE,
+    av: AV_GUIDANCE,
     file: FILE_GUIDANCE,
     search: SEARCH_GUIDANCE,
     tag: TAG_GUIDANCE,
@@ -169,6 +198,7 @@ export const TOOL_ACTION_HINTS: Record<ToolCategory, Partial<Record<string, stri
     notebook: NOTEBOOK_ACTION_HINTS,
     document: DOCUMENT_ACTION_HINTS,
     block: BLOCK_ACTION_HINTS,
+    av: AV_ACTION_HINTS,
     file: FILE_ACTION_HINTS,
     search: SEARCH_ACTION_HINTS,
     tag: TAG_ACTION_HINTS,

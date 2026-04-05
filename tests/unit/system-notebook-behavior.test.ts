@@ -6,6 +6,7 @@ import { callSystemTool } from '@/mcp/tools/system';
 
 import * as notebookApi from '@/api/notebook';
 import * as systemApi from '@/api/system';
+import * as contextTools from '@/mcp/tools/context';
 
 function parseResult(result: Awaited<ReturnType<typeof callNotebookTool>> | Awaited<ReturnType<typeof callSystemTool>>) {
     return JSON.parse(result.content[0].text);
@@ -167,5 +168,45 @@ describe('system and notebook behavior', () => {
 
         expect(parsed.keyPath).toBe('conf.appearance.mode');
         expect(parsed.value.value).toBe(0);
+    });
+
+    it('returns a retryable notebook-state error for get_child_docs right after close', async () => {
+        vi.spyOn(contextTools, 'ensurePermissionForNotebook').mockResolvedValue(null);
+        vi.spyOn(notebookApi, 'listNotebooks').mockResolvedValue({
+            notebooks: [{ id: 'nb-1', name: 'One', closed: true }],
+        } as never);
+        vi.spyOn(contextTools, 'listChildDocumentsByPath').mockRejectedValue(new Error('kernel still initializing'));
+
+        const result = await callNotebookTool({} as never, { action: 'get_child_docs', notebook: 'nb-1' }, notebookConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        expect(result.isError).toBe(true);
+        expect(parsed.error.reason).toBe('notebook_closed_or_initializing');
+        expect(parsed.error.retryable).toBe(true);
+        expect(parsed.error.suggestedNextAction).toBe('open_notebook_or_retry');
+        expect(parsed.error.notebook).toBe('nb-1');
+        expect(parsed.error.retryAttempts).toBe(3);
+        expect(parsed.error.retryWindowMs).toBe(300);
+        expect(parsed.error.message).toContain('closed or still initializing');
+    });
+
+    it('retries notebook-state errors and returns children once initialization recovers', async () => {
+        vi.useFakeTimers();
+        vi.spyOn(contextTools, 'ensurePermissionForNotebook').mockResolvedValue(null);
+        vi.spyOn(notebookApi, 'listNotebooks').mockResolvedValue({
+            notebooks: [{ id: 'nb-1', name: 'One', closed: true }],
+        } as never);
+        vi.spyOn(contextTools, 'listChildDocumentsByPath')
+            .mockRejectedValueOnce(new Error('kernel still initializing'))
+            .mockResolvedValueOnce([{ id: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy', name: 'Doc 1' }]);
+
+        const resultPromise = callNotebookTool({} as never, { action: 'get_child_docs', notebook: 'nb-1' }, notebookConfig, permMgr as never);
+        await vi.runAllTimersAsync();
+        const result = await resultPromise;
+        const parsed = parseResult(result);
+
+        expect(result.isError).toBeFalsy();
+        expect(parsed).toEqual([{ id: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy', name: 'Doc 1' }]);
+        vi.useRealTimers();
     });
 });

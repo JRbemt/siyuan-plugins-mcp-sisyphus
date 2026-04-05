@@ -218,7 +218,7 @@ async function getBacklinkDocWithFallback(
     id: string,
     keyword?: string,
     refTreeID?: string,
-): Promise<{ backlinks: unknown[]; backmentions: unknown[]; fallbackUsed?: boolean }> {
+): Promise<{ backlinks: unknown[]; backmentions: unknown[]; fallbackUsed?: boolean; sourcePayloadMissing?: boolean; fallbackQuery?: 'sql'; resultConfidence?: 'fallback' }> {
     const result = await searchApi.getBacklinkDoc(client, id, keyword, refTreeID);
     if (hasBacklinkPayload(result) && (Array.isArray(result.backlinks) || Array.isArray(result.backmentions))) {
         return {
@@ -231,7 +231,14 @@ async function getBacklinkDocWithFallback(
         queryFallbackBacklinkRows(client, id, keyword, refTreeID),
         queryFallbackBackmentionRows(client, id, keyword, refTreeID),
     ]);
-    return { backlinks, backmentions, fallbackUsed: true };
+    return {
+        backlinks,
+        backmentions,
+        fallbackUsed: true,
+        sourcePayloadMissing: true,
+        fallbackQuery: 'sql',
+        resultConfidence: 'fallback',
+    };
 }
 
 async function getBackmentionDocWithFallback(
@@ -239,14 +246,20 @@ async function getBackmentionDocWithFallback(
     id: string,
     keyword?: string,
     refTreeID?: string,
-): Promise<{ backmentions: unknown[]; fallbackUsed?: boolean }> {
+): Promise<{ backmentions: unknown[]; fallbackUsed?: boolean; sourcePayloadMissing?: boolean; fallbackQuery?: 'sql'; resultConfidence?: 'fallback' }> {
     const result = await searchApi.getBackmentionDoc(client, id, keyword, refTreeID);
     if (result && typeof result === 'object' && Array.isArray((result as { backmentions?: unknown[] }).backmentions)) {
         return { backmentions: (result as { backmentions: unknown[] }).backmentions };
     }
 
     const backmentions = await queryFallbackBackmentionRows(client, id, keyword, refTreeID);
-    return { backmentions, fallbackUsed: true };
+    return {
+        backmentions,
+        fallbackUsed: true,
+        sourcePayloadMissing: true,
+        fallbackQuery: 'sql',
+        resultConfidence: 'fallback',
+    };
 }
 
 export async function filterItemsByPermission(
@@ -430,6 +443,9 @@ export async function callSearchTool(
                     const filtered = filterBacklinkResultByPermission(result, permMgr);
                     return createJsonResult({
                         ...filtered,
+                        ...(result.sourcePayloadMissing ? { sourcePayloadMissing: true } : {}),
+                        ...(result.fallbackQuery ? { fallbackQuery: result.fallbackQuery } : {}),
+                        ...(result.resultConfidence ? { resultConfidence: result.resultConfidence } : {}),
                         ...(result.fallbackUsed ? { warning: 'SiYuan returned no backlink payload; SQL fallback results are shown.' } : {}),
                     });
                 } catch (error) {
@@ -454,6 +470,9 @@ export async function callSearchTool(
                     const filtered = filterBacklinkResultByPermission(result, permMgr);
                     return createJsonResult({
                         ...filtered,
+                        ...(result.sourcePayloadMissing ? { sourcePayloadMissing: true } : {}),
+                        ...(result.fallbackQuery ? { fallbackQuery: result.fallbackQuery } : {}),
+                        ...(result.resultConfidence ? { resultConfidence: result.resultConfidence } : {}),
                         ...(result.fallbackUsed ? { warning: 'SiYuan returned no backmention payload; SQL fallback results are shown.' } : {}),
                     });
                 } catch (error) {

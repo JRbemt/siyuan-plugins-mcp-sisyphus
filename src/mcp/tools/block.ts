@@ -27,7 +27,7 @@ import {
     BlockUpdateSchema,
     BlockWordCountSchema,
 } from '../types';
-import { ensurePermissionForDocumentId } from './context';
+import { createResultResolutionCache, ensurePermissionForDocumentId, resolveDocumentContextById, resolveResultItemContext } from './context';
 import { filterItemsByPermission } from './search';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, paginate, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
 
@@ -193,6 +193,101 @@ export function isMissingBlockError(error: unknown): boolean {
     return error instanceof Error
         && (/未找到 ID 为 \[[^\]]+\] 的内容块/.test(error.message)
             || /SiYuan API error:\s*-1\b/.test(error.message));
+}
+
+type RecentUpdatedDocumentSummary = {
+    documentId: string;
+    notebook: string;
+    path: string;
+    hPath?: string;
+    name?: string;
+    updatedBlockCount: number;
+    sampleBlocks: Array<{
+        id?: string;
+        type?: string;
+        subtype?: string;
+        content?: string;
+        path?: string;
+    }>;
+};
+
+function isLowLevelRecentBlockType(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    return value !== 'd';
+}
+
+function createRecentUpdatedSampleBlock(item: unknown): {
+    id?: string;
+    type?: string;
+    subtype?: string;
+    content?: string;
+    path?: string;
+} {
+    if (!item || typeof item !== 'object') return {};
+    const typed = item as Record<string, unknown>;
+    return {
+        ...(typeof typed.id === 'string' ? { id: typed.id } : {}),
+        ...(typeof typed.type === 'string' ? { type: typed.type } : {}),
+        ...(typeof typed.subtype === 'string' ? { subtype: typed.subtype } : {}),
+        ...(typeof typed.content === 'string' ? { content: typed.content } : {}),
+        ...(typeof typed.path === 'string' ? { path: typed.path } : {}),
+    };
+}
+
+async function aggregateRecentUpdatedDocuments(
+    client: SiYuanClient,
+    items: unknown[],
+): Promise<{ documents: RecentUpdatedDocumentSummary[]; containsLowLevelBlocks: boolean }> {
+    const cache = createResultResolutionCache();
+    const grouped = new Map<string, RecentUpdatedDocumentSummary>();
+    let containsLowLevelBlocks = false;
+
+    for (const item of items) {
+        if (item && typeof item === 'object') {
+            const typedItem = item as Record<string, unknown>;
+            if (isLowLevelRecentBlockType(typedItem.type)) {
+                containsLowLevelBlocks = true;
+            }
+        }
+
+        const context = await resolveResultItemContext(client, item, cache);
+        if (!context?.documentId || !context.notebook || !context.path) continue;
+
+        let group = grouped.get(context.documentId);
+        if (!group) {
+            let name: string | undefined;
+            let hPath: string | undefined;
+            try {
+                const resolved = await resolveDocumentContextById(client, context.documentId);
+                name = resolved.name;
+                hPath = resolved.hPath;
+            } catch {
+                name = undefined;
+                hPath = undefined;
+            }
+
+            group = {
+                documentId: context.documentId,
+                notebook: context.notebook,
+                path: context.path,
+                ...(hPath ? { hPath } : {}),
+                ...(name ? { name } : {}),
+                updatedBlockCount: 0,
+                sampleBlocks: [],
+            };
+            grouped.set(context.documentId, group);
+        }
+
+        group.updatedBlockCount += 1;
+        if (group.sampleBlocks.length < 3) {
+            group.sampleBlocks.push(createRecentUpdatedSampleBlock(item));
+        }
+    }
+
+    return {
+        documents: [...grouped.values()],
+        containsLowLevelBlocks,
+    };
 }
 
 function createSlimWriteResult(
@@ -448,9 +543,16 @@ const handleRecentUpdated: BlockActionHandler = async ({ client, permMgr, rawArg
     const filtered = await filterItemsByPermission(client, items, permMgr);
     const count = typeof parsed.count === 'number' ? parsed.count : undefined;
     const truncatedItems = typeof count === 'number' ? filtered.items.slice(0, count) : filtered.items;
+    const aggregated = await aggregateRecentUpdatedDocuments(client, truncatedItems);
     return createJsonResult({
-        items: truncatedItems,
+        documents: aggregated.documents,
+        documentCount: aggregated.documents.length,
         count: truncatedItems.length,
+        containsLowLevelBlocks: aggregated.containsLowLevelBlocks,
+        grouping: 'document',
+        primaryView: 'documents',
+        items: truncatedItems,
+        hint: 'documents is the user-facing summary grouped by root document; items remains the raw recent block stream for advanced consumers.',
         ...(filtered.removedCount > 0 ? {
             partial: true,
             filteredOutCount: filtered.removedCount,

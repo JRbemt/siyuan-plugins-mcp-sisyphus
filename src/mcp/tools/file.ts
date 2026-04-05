@@ -33,7 +33,7 @@ export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
         action: 'render_template',
         schema: createActionSchema('render_template', {
             id: { type: 'string', description: 'Document ID for template context' },
-            path: { type: 'string', description: 'Template file absolute path' },
+            path: { type: 'string', description: 'Template file path inside the SiYuan workspace (not an arbitrary local filesystem path)' },
         }, ['id', 'path'], 'Render a template with document context.'),
     },
     {
@@ -99,6 +99,10 @@ function resolveLocalInputPath(inputPath: string): string {
     return path.isAbsolute(inputPath) ? inputPath : path.resolve(process.cwd(), inputPath);
 }
 
+function isWorkspaceTemplatePathError(error: unknown): error is Error {
+    return error instanceof Error && /is not in workspace/i.test(error.message);
+}
+
 export async function callFileTool(
     client: SiYuanClient,
     args: Record<string, unknown> | undefined,
@@ -158,8 +162,31 @@ export async function callFileTool(
                 const parsed = FileRenderTemplateSchema.parse(rawArgs);
                 const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
                 if (denied) return denied;
-                const result = await fileApi.renderTemplate(client, parsed.id, parsed.path);
-                return createJsonResult(result);
+                try {
+                    const result = await fileApi.renderTemplate(client, parsed.id, parsed.path);
+                    return createJsonResult(result);
+                } catch (error) {
+                    if (isWorkspaceTemplatePathError(error)) {
+                        return {
+                            content: [{
+                                type: 'text',
+                                text: JSON.stringify({
+                                    error: {
+                                        type: 'api_error',
+                                        tool: FILE_TOOL_NAME,
+                                        action: 'render_template',
+                                        message: error.message,
+                                        reason: 'path_not_in_workspace',
+                                        workspacePathRequired: true,
+                                        hint: 'The template path must point to a file inside the SiYuan workspace, not an arbitrary local path such as /tmp/... or your repo checkout.',
+                                    },
+                                }, null, 2),
+                            }],
+                            isError: true,
+                        };
+                    }
+                    throw error;
+                }
             }
             case 'render_sprig': {
                 const parsed = FileRenderSprigSchema.parse(rawArgs);

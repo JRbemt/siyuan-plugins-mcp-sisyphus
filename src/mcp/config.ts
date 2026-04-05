@@ -1,10 +1,11 @@
-export const TOOL_CATEGORIES = ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system', 'mascot'] as const;
+export const TOOL_CATEGORIES = ['notebook', 'document', 'block', 'av', 'file', 'search', 'tag', 'system', 'mascot'] as const;
 
 export type ToolCategory = typeof TOOL_CATEGORIES[number];
 
 export const NOTEBOOK_ACTIONS = ['list', 'create', 'open', 'close', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'] as const;
 export const DOCUMENT_ACTIONS = ['create', 'rename', 'remove', 'move', 'get_path', 'get_hpath', 'get_ids', 'get_child_blocks', 'get_child_docs', 'set_icon', 'set_cover', 'clear_cover', 'list_tree', 'search_docs', 'get_doc', 'create_daily_note'] as const;
 export const BLOCK_ACTIONS = ['insert', 'prepend', 'append', 'update', 'delete', 'move', 'fold', 'unfold', 'get_kramdown', 'get_children', 'transfer_ref', 'set_attrs', 'get_attrs', 'exists', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count'] as const;
+export const AV_ACTIONS = ['get', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cell', 'batch_set_cells', 'duplicate_block', 'get_primary_key_values'] as const;
 export const FILE_ACTIONS = ['upload_asset', 'render_template', 'render_sprig', 'export_md', 'export_resources'] as const;
 export const SEARCH_ACTIONS = ['fulltext', 'query_sql', 'search_tag', 'get_backlinks', 'get_backmentions'] as const;
 export const TAG_ACTIONS = ['list', 'rename', 'remove'] as const;
@@ -14,6 +15,7 @@ export const MASCOT_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
 export type NotebookAction = typeof NOTEBOOK_ACTIONS[number];
 export type DocumentAction = typeof DOCUMENT_ACTIONS[number];
 export type BlockAction = typeof BLOCK_ACTIONS[number];
+export type AvAction = typeof AV_ACTIONS[number];
 export type FileAction = typeof FILE_ACTIONS[number];
 export type SearchAction = typeof SEARCH_ACTIONS[number];
 export type TagAction = typeof TAG_ACTIONS[number];
@@ -24,6 +26,7 @@ export type ToolActionMap = {
     notebook: NotebookAction;
     document: DocumentAction;
     block: BlockAction;
+    av: AvAction;
     file: FileAction;
     search: SearchAction;
     tag: TagAction;
@@ -44,6 +47,7 @@ export type ToolConfig = {
     notebook: CategoryToolConfig<NotebookAction>;
     document: CategoryToolConfig<DocumentAction>;
     block: CategoryToolConfig<BlockAction>;
+    av: CategoryToolConfig<AvAction>;
     file: FileCategoryToolConfig<FileAction>;
     search: CategoryToolConfig<SearchAction>;
     tag: CategoryToolConfig<TagAction>;
@@ -98,6 +102,17 @@ export const LEGACY_TOOL_TO_ACTION: Record<string, { category: ToolCategory; act
     get_recent_updated_blocks: { category: 'block', action: 'recent_updated' },
     get_blocks_word_count: { category: 'block', action: 'word_count' },
 
+    get_attribute_view: { category: 'av', action: 'get' },
+    search_attribute_view: { category: 'av', action: 'search' },
+    add_attribute_view_blocks: { category: 'av', action: 'add_rows' },
+    remove_attribute_view_blocks: { category: 'av', action: 'remove_rows' },
+    add_attribute_view_key: { category: 'av', action: 'add_column' },
+    remove_attribute_view_key: { category: 'av', action: 'remove_column' },
+    set_attribute_view_block_attr: { category: 'av', action: 'set_cell' },
+    batch_set_attribute_view_block_attrs: { category: 'av', action: 'batch_set_cells' },
+    duplicate_attribute_view_block: { category: 'av', action: 'duplicate_block' },
+    get_attribute_view_primary_key_values: { category: 'av', action: 'get_primary_key_values' },
+
     upload_asset: { category: 'file', action: 'upload_asset' },
     render_template: { category: 'file', action: 'render_template' },
     render_sprig: { category: 'file', action: 'render_sprig' },
@@ -125,6 +140,7 @@ export const ACTIONS_BY_CATEGORY: { [Category in ToolCategory]: readonly ToolAct
     notebook: NOTEBOOK_ACTIONS,
     document: DOCUMENT_ACTIONS,
     block: BLOCK_ACTIONS,
+    av: AV_ACTIONS,
     file: FILE_ACTIONS,
     search: SEARCH_ACTIONS,
     tag: TAG_ACTIONS,
@@ -156,6 +172,12 @@ const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
         delete: 'advanced', move: 'advanced', fold: 'advanced', unfold: 'advanced',
         transfer_ref: 'advanced', set_attrs: 'advanced', breadcrumb: 'advanced',
         dom: 'advanced', recent_updated: 'advanced', word_count: 'advanced',
+    },
+    av: {
+        get: 'basic', search: 'basic', get_primary_key_values: 'basic',
+        add_rows: 'advanced', remove_rows: 'advanced', add_column: 'advanced',
+        remove_column: 'advanced', set_cell: 'advanced', batch_set_cells: 'advanced',
+        duplicate_block: 'advanced',
     },
     file: {
         export_md: 'basic', upload_asset: 'basic',
@@ -189,6 +211,7 @@ export const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
     notebook: new Set(['remove', 'set_permission']),
     document: new Set(['remove', 'move']),
     block: new Set(['delete', 'move']),
+    av: new Set(),
     file: new Set(['upload_asset']),
     search: new Set(),
     tag: new Set(['remove']),
@@ -220,6 +243,10 @@ export function buildDefaultToolConfig(): ToolConfig {
         block: {
             enabled: true,
             actions: createActionsRecord(BLOCK_ACTIONS, ['insert', 'prepend', 'append', 'update', 'move', 'fold', 'unfold', 'get_kramdown', 'get_children', 'transfer_ref', 'set_attrs', 'get_attrs', 'exists', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count']),
+        },
+        av: {
+            enabled: true,
+            actions: createActionsRecord(AV_ACTIONS, ['get', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cell', 'batch_set_cells', 'duplicate_block', 'get_primary_key_values']),
         },
         file: {
             enabled: true,

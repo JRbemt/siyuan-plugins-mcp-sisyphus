@@ -10,6 +10,8 @@ describe('setting tool config', () => {
         expect(config.document.actions.clear_cover).toBe(true);
         expect(config.file.actions.upload_asset).toBe(true);
         expect(config.file.uploadLargeFileThresholdMB).toBe(10);
+        expect(config.av.actions.get).toBe(true);
+        expect(config.av.actions.set_cell).toBe(true);
         expect(config.mascot.actions.get_balance).toBe(true);
         expect(config.mascot.actions.shop).toBe(true);
         expect(config.mascot.actions.buy).toBe(true);
@@ -50,6 +52,23 @@ describe('setting tool config', () => {
         expect(config.mascot.actions.get_balance).toBe(true);
         expect(config.mascot.actions.shop).toBe(false);
         expect(config.mascot.actions.buy).toBe(true);
+    });
+
+    it('keeps av nested action toggles', () => {
+        const config = normalizeToolConfig({
+            av: {
+                enabled: true,
+                actions: {
+                    get: true,
+                    set_cell: false,
+                },
+            },
+        });
+
+        expect(config.av.enabled).toBe(true);
+        expect(config.av.actions.get).toBe(true);
+        expect(config.av.actions.set_cell).toBe(false);
+        expect(config.av.actions.batch_set_cells).toBe(true);
     });
 
     it.each([

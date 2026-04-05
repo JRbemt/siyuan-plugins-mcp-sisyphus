@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, MASCOT_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS, SYSTEM_ACTIONS, TAG_ACTIONS } from "./config";
+import { AV_ACTIONS, BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, MASCOT_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS, SYSTEM_ACTIONS, TAG_ACTIONS } from "./config";
 
 const NotebookConfSchema = z.object({
     name: z.string().optional(),
@@ -73,6 +73,7 @@ const DocumentMoveReferenceSchema = z.object({
 export const NotebookActionSchema = z.enum(NOTEBOOK_ACTIONS);
 export const DocumentActionSchema = z.enum(DOCUMENT_ACTIONS);
 export const BlockActionSchema = z.enum(BLOCK_ACTIONS);
+export const AvActionSchema = z.enum(AV_ACTIONS);
 export const FileActionSchema = z.enum(FILE_ACTIONS);
 export const MascotActionSchema = z.enum(MASCOT_ACTIONS);
 
@@ -366,6 +367,132 @@ export const BlockWordCountSchema = z.object({
     ids: z.array(z.string()).describe("One or more block IDs"),
 });
 
+const AvValueTypeSchema = z.enum(["text", "number", "date", "checkbox", "select", "multi_select", "relation", "url", "email", "phone"]);
+
+const AvSetCellValueFieldsSchema = z.object({
+    valueType: AvValueTypeSchema.describe("Cell value type"),
+    text: z.string().optional().describe("Text value for valueType=text"),
+    number: z.number().optional().describe("Number value for valueType=number"),
+    numberFormat: z.string().optional().describe("Optional number format such as commas, percent, USD, or CNY"),
+    date: z.union([z.string(), z.number()]).optional().describe("Date/time value as ISO text or epoch milliseconds for valueType=date"),
+    endDate: z.union([z.string(), z.number()]).optional().describe("Optional end date as ISO text or epoch milliseconds for ranged dates"),
+    includeTime: z.boolean().optional().describe("When false, store the date without a time component"),
+    checked: z.boolean().optional().describe("Checkbox state for valueType=checkbox"),
+    option: z.string().optional().describe("Selected option label for valueType=select"),
+    options: z.array(z.string()).optional().describe("Selected option labels for valueType=multi_select"),
+    relationBlockIDs: z.array(z.string()).optional().describe("Related block IDs for valueType=relation"),
+    url: z.string().optional().describe("URL value for valueType=url"),
+    email: z.string().optional().describe("Email value for valueType=email"),
+    phone: z.string().optional().describe("Phone value for valueType=phone"),
+}).superRefine((value, ctx) => {
+    const fieldByType: Record<z.infer<typeof AvValueTypeSchema>, keyof typeof value> = {
+        text: "text",
+        number: "number",
+        date: "date",
+        checkbox: "checked",
+        select: "option",
+        multi_select: "options",
+        relation: "relationBlockIDs",
+        url: "url",
+        email: "email",
+        phone: "phone",
+    };
+
+    const expectedField = fieldByType[value.valueType];
+    if (value[expectedField] === undefined) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${String(expectedField)} is required when valueType="${value.valueType}".`,
+            path: [expectedField],
+        });
+    }
+});
+
+const AvCellUpdateItemSchema = z.object({
+    rowID: z.string().describe("Row item ID"),
+    columnID: z.string().describe("Column key ID"),
+}).and(AvSetCellValueFieldsSchema);
+
+export const AvGetSchema = z.object({
+    action: z.literal("get"),
+    id: z.string().describe("Attribute view ID"),
+});
+
+export const AvSearchSchema = z.object({
+    action: z.literal("search"),
+    keyword: z.string().describe("Keyword to search in attribute view names"),
+    excludes: z.array(z.string()).optional().describe("Optional AV IDs to exclude"),
+});
+
+export const AvAddRowsSchema = z.object({
+    action: z.literal("add_rows"),
+    avID: z.string().describe("Attribute view ID"),
+    blockIDs: z.array(z.string()).describe("Existing block IDs to add as rows"),
+    blockID: z.string().optional().describe("Optional database block ID"),
+    viewID: z.string().optional().describe("Optional target view ID"),
+    groupID: z.string().optional().describe("Optional target group ID"),
+    previousID: z.string().optional().describe("Optional previous row item ID"),
+    ignoreDefaultFill: z.boolean().optional().describe("When true, skip view/group default value filling"),
+});
+
+export const AvRemoveRowsSchema = z.object({
+    action: z.literal("remove_rows"),
+    avID: z.string().describe("Attribute view ID"),
+    srcIDs: z.array(z.string()).min(1).describe("Bound row block/item IDs to remove"),
+});
+
+export const AvAddColumnSchema = z.object({
+    action: z.literal("add_column"),
+    avID: z.string().describe("Attribute view ID"),
+    keyID: z.string().optional().describe("Optional new column key ID; MCP generates one when omitted"),
+    keyName: z.string().describe("New column name"),
+    keyType: z.enum(["text", "number", "date", "select", "mSelect", "url", "email", "phone", "template", "created", "updated", "checkbox", "relation", "rollup"]).describe("Column type"),
+    keyIcon: z.string().optional().describe("Optional column icon"),
+    previousKeyID: z.string().optional().describe("Insert after this existing column key ID"),
+});
+
+export const AvRemoveColumnSchema = z.object({
+    action: z.literal("remove_column"),
+    avID: z.string().describe("Attribute view ID"),
+    keyID: z.string().optional().describe("Column key ID"),
+    columnID: z.string().optional().describe("Alias of keyID"),
+    removeRelationDest: z.boolean().optional().describe("Also remove reverse relation metadata when deleting a relation column"),
+}).superRefine((value, ctx) => {
+    if (!value.keyID && !value.columnID) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Provide keyID or columnID.",
+            path: ['keyID'],
+        });
+    }
+});
+
+export const AvSetCellSchema = z.object({
+    action: z.literal("set_cell"),
+    avID: z.string().describe("Attribute view ID"),
+    rowID: z.string().describe("Row item ID"),
+    columnID: z.string().describe("Column key ID"),
+}).and(AvSetCellValueFieldsSchema);
+
+export const AvBatchSetCellsSchema = z.object({
+    action: z.literal("batch_set_cells"),
+    avID: z.string().describe("Attribute view ID"),
+    items: z.array(AvCellUpdateItemSchema).min(1).describe("Batch cell updates"),
+});
+
+export const AvDuplicateBlockSchema = z.object({
+    action: z.literal("duplicate_block"),
+    avID: z.string().describe("Source attribute view ID"),
+});
+
+export const AvGetPrimaryKeyValuesSchema = z.object({
+    action: z.literal("get_primary_key_values"),
+    avID: z.string().describe("Attribute view ID"),
+    keyword: z.string().optional().describe("Optional keyword filter for primary key values"),
+    page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
+    pageSize: z.number().int().min(1).optional().describe("Rows per page, default all"),
+});
+
 export const FileUploadAssetSchema = z.object({
     action: z.literal("upload_asset"),
     assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),
@@ -376,7 +503,7 @@ export const FileUploadAssetSchema = z.object({
 export const FileRenderTemplateSchema = z.object({
     action: z.literal("render_template"),
     id: z.string().describe("Document ID for template context"),
-    path: z.string().describe("Template file absolute path"),
+    path: z.string().describe("Template file path inside the SiYuan workspace; arbitrary local filesystem paths are not supported"),
 });
 
 export const FileRenderSprigSchema = z.object({

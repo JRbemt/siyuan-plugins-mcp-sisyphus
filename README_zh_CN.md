@@ -169,7 +169,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `set_icon` | 设置笔记本图标；推荐使用 `1f4d4` 这类 Unicode 十六进制字符串，而不是直接传 emoji 字符 |
 | `get_permissions` | 查看所有笔记本的 MCP 权限 |
 | `set_permission` | 修改笔记本权限（`none` / `r` / `rw` / `rwd`） |
-| `get_child_docs` | 获取笔记本根目录下的直属子文档，并返回更明确的笔记本状态错误 |
+| `get_child_docs` | 获取笔记本根目录下的直属子文档，并带有限短重试的笔记本状态处理 |
 
 ### `document`
 
@@ -213,7 +213,7 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `info` | 获取块所在根文档元数据 |
 | `breadcrumb` | 获取块的面包屑路径 |
 | `dom` | 获取块的渲染 DOM |
-| `recent_updated` | 列出最近更新的块，并按笔记本权限过滤且支持 `count` 截断 |
+| `recent_updated` | 列出最近更新内容，默认突出文档级摘要，并按笔记本权限过滤且支持 `count` 截断 |
 | `word_count` | 获取块的字数统计 |
 
 ### `file`

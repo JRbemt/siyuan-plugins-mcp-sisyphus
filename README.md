@@ -169,7 +169,7 @@ Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 | `set_icon` | Set notebook icon; prefer Unicode hex strings like `1f4d4` over raw emoji characters |
 | `get_permissions` | List all notebook permission levels |
 | `set_permission` | Change notebook MCP permission (`none` / `r` / `rw` / `rwd`) |
-| `get_child_docs` | Get direct child documents at notebook root with clearer notebook-state errors |
+| `get_child_docs` | Get direct child documents at notebook root with retry-aware notebook-state handling |
 
 ### `document`
 
@@ -213,7 +213,7 @@ Cover semantics: `set_cover` and `clear_cover` are semantic wrappers around the 
 | `info` | Get root document metadata for a block |
 | `breadcrumb` | Get breadcrumb path for a block |
 | `dom` | Get rendered DOM for a block |
-| `recent_updated` | List recently updated blocks, filtered by notebook permission and optional `count` |
+| `recent_updated` | List recent updates with document-first summaries, filtered by notebook permission and optional `count` |
 | `word_count` | Get word-count statistics for blocks |
 
 ### `file`

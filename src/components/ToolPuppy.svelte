@@ -11,15 +11,13 @@
         shouldShowWageCard,
     } from './puppy-interactions';
     import {
-        BLOCK_ACTIONS,
-        DOCUMENT_ACTIONS,
-        FILE_ACTIONS,
-        MASCOT_ACTIONS,
-        NOTEBOOK_ACTIONS,
-        SEARCH_ACTIONS as SEARCH_TOOL_ACTIONS,
-        SYSTEM_ACTIONS,
-        TAG_ACTIONS,
-    } from '../setting/tool-config';
+        resolveActionState,
+        resolveToolVariant,
+        RANDOM_TEST_ACTIONS,
+        type PuppyState,
+        type TestActionEntry,
+        type ToolVariant,
+    } from './puppy-tool-visuals';
 
     export let visible = true;
     export let testModeEnabled = false;
@@ -37,58 +35,11 @@
     const FEED_PROP_DISPLAY_TIME = 10000;
     const CLICK_HINT_DISPLAY_TIME = 2600;
 
-    type PuppyState = 'idle' | 'reading' | 'writing' | 'deleting' | 'moving' | 'dangerous';
-    type ToolVariant = 'none' | 'notebook' | 'document' | 'block' | 'file' | 'search' | 'tag' | 'system' | 'mascot';
-    type TestActionEntry = { tool: Exclude<ToolVariant, 'none'>; action: string };
     type ResultState = 'none' | 'success' | 'error';
     type PointerState = 'none' | 'pointer-down' | 'pointer-drag' | 'pointer-release';
     type FeedPropKind = 'none' | 'food' | 'drink';
 
-    const TOOL_VARIANTS = new Set<ToolVariant>(['notebook', 'document', 'block', 'file', 'search', 'tag', 'system', 'mascot']);
-
-    const READING_ACTIONS = new Set([
-        'get_kramdown', 'get_children', 'get_attrs', 'exists', 'info', 'breadcrumb',
-        'dom', 'word_count', 'recent_updated', 'get_path', 'get_hpath', 'get_ids',
-        'get_child_blocks', 'get_child_docs', 'search_docs', 'get_doc', 'list_tree',
-        'list', 'get_conf', 'get_permissions', 'conf', 'get_version',
-        'get_current_time', 'boot_progress', 'network', 'changelog', 'sys_fonts',
-        'fulltext', 'query_sql', 'search_tag', 'get_backlinks', 'get_backmentions',
-    ]);
-    const BUILD_ACTIONS = new Set(['insert', 'prepend', 'append', 'create', 'create_daily_note']);
-    const EDIT_ACTIONS = new Set([
-        'update', 'rename', 'set_attrs', 'transfer_ref', 'fold', 'unfold',
-        'set_icon', 'set_cover', 'clear_cover', 'set_conf', 'push_msg', 'push_err_msg', 'open', 'close',
-        'render_template', 'render_sprig', 'rename_tag', 'buy',
-    ]);
-    const DELETING_ACTIONS = new Set(['delete', 'remove']);
-    const MOVING_ACTIONS = new Set(['move']);
-    const DANGEROUS_ACTIONS = new Set(['set_permission', 'upload_asset', 'workspace_info']);
-
-    const RANDOM_TEST_ACTIONS: TestActionEntry[] = [
-        ...NOTEBOOK_ACTIONS.map((action) => ({ tool: 'notebook' as const, action })),
-        ...DOCUMENT_ACTIONS.map((action) => ({ tool: 'document' as const, action })),
-        ...BLOCK_ACTIONS.map((action) => ({ tool: 'block' as const, action })),
-        ...FILE_ACTIONS.map((action) => ({ tool: 'file' as const, action })),
-        ...SEARCH_TOOL_ACTIONS.map((action) => ({ tool: 'search' as const, action })),
-        ...TAG_ACTIONS.map((action) => ({ tool: 'tag' as const, action })),
-        ...SYSTEM_ACTIONS.map((action) => ({ tool: 'system' as const, action })),
-        ...MASCOT_ACTIONS.map((action) => ({ tool: 'mascot' as const, action })),
-    ];
-
     const TEST_SUCCESS_WEIGHT = 0.8;
-
-    function resolveActionState(action: string): PuppyState {
-        if (DANGEROUS_ACTIONS.has(action)) return 'dangerous';
-        if (DELETING_ACTIONS.has(action)) return 'deleting';
-        if (MOVING_ACTIONS.has(action)) return 'moving';
-        if (BUILD_ACTIONS.has(action) || EDIT_ACTIONS.has(action)) return 'writing';
-        if (READING_ACTIONS.has(action)) return 'reading';
-        return 'reading';
-    }
-
-    function resolveToolVariant(tool: string): ToolVariant {
-        return TOOL_VARIANTS.has(tool as ToolVariant) ? (tool as ToolVariant) : 'none';
-    }
 
     let state: PuppyState = 'idle';
     let resultState: ResultState = 'none';
@@ -96,7 +47,7 @@
     let toolAction = '';
     let bubbleText = '';
     let lastSeq = 0;
-    let pollTimer: ReturnType<typeof setInterval>;
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
     let idleTimer: ReturnType<typeof setTimeout>;
     let resultTimer: ReturnType<typeof setTimeout>;
     let blinkTimer: ReturnType<typeof setInterval>;
@@ -313,15 +264,15 @@
     function syncTestMode() {
         if (!mounted) return;
         if (testModeEnabled) {
-            clearInterval(pollTimer);
+            stopPolling();
             clearTestTimers();
             clearIdleMotionTimer();
             scheduleNextTestTick();
             return;
         }
         clearTestTimers();
-        clearInterval(pollTimer);
-        pollTimer = setInterval(pollEvents, POLL_INTERVAL);
+        stopPolling();
+        startPolling();
         setIdle();
         scheduleIdleMotion();
     }
@@ -401,12 +352,39 @@
         scheduleIdleMotion();
     }
 
+    function clearTransientDisplayState() {
+        setIdle();
+        balance = 0;
+        mascotItemId = '';
+        mascotItemLabel = '';
+        mascotItemType = '';
+        mascotItemEmoji = '';
+        heartBurstVisible = false;
+        feedPropVisible = false;
+        feedPropEmoji = '';
+        feedPropKind = 'none';
+        clickHintText = '';
+    }
+
     function resetIdleTimer() {
         clearTimeout(idleTimer);
         clearIdleMotionTimer();
         idleTimer = setTimeout(() => {
             setIdle();
         }, IDLE_TIMEOUT);
+    }
+
+    function stopPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = undefined;
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer || testModeEnabled || !visible) return;
+        pollEvents();
+        pollTimer = setInterval(pollEvents, POLL_INTERVAL);
     }
 
     async function pollEvents() {
@@ -483,7 +461,7 @@
     onMount(() => {
         mounted = true;
         loadPosition();
-        pollTimer = setInterval(pollEvents, POLL_INTERVAL);
+        startPolling();
         startBlink();
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mouseup', onMouseUp);
@@ -492,7 +470,7 @@
     });
 
     onDestroy(() => {
-        clearInterval(pollTimer);
+        stopPolling();
         clearInterval(blinkTimer);
         clearTestTimers();
         clearIdleMotionTimer();
@@ -507,6 +485,16 @@
     });
 
     $: isSleeping = state === 'idle' && idleMotion === 'sleep';
+    $: if (mounted) {
+        if (visible && !testModeEnabled) {
+            startPolling();
+        } else {
+            stopPolling();
+            if (!visible) {
+                clearTransientDisplayState();
+            }
+        }
+    }
     $: eyeState = isSleeping ? 'blink' :
         blinking ? 'blink' :
         resultState === 'success' ? 'happy' :
@@ -525,7 +513,7 @@
 
     $: bubbleToneClass = resultState === 'error' ? 'sy-puppy__bubble--error' : '';
 
-    $: bubblePositionClass = toolVariant === 'search' || toolVariant === 'block' || toolVariant === 'system'
+    $: bubblePositionClass = toolVariant === 'search' || toolVariant === 'block' || toolVariant === 'system' || toolVariant === 'av'
         ? 'sy-puppy__bubble--high sy-puppy__bubble--left'
         : toolVariant === 'notebook' || toolVariant === 'document'
             ? 'sy-puppy__bubble--right'
@@ -536,7 +524,7 @@
     $: bubbleOffsetClass = resultState === 'error' ? 'sy-puppy__bubble--error-offset' : '';
     $: bubbleTailClass = toolVariant === 'notebook' || toolVariant === 'document'
         ? 'sy-puppy__bubble--tail-right'
-        : toolVariant === 'search' || toolVariant === 'block' || toolVariant === 'system' || toolVariant === 'file' || toolVariant === 'tag' || toolVariant === 'mascot'
+        : toolVariant === 'search' || toolVariant === 'block' || toolVariant === 'system' || toolVariant === 'av' || toolVariant === 'file' || toolVariant === 'tag' || toolVariant === 'mascot'
             ? 'sy-puppy__bubble--tail-left'
             : 'sy-puppy__bubble--tail-center';
 
@@ -546,7 +534,7 @@
         ? `sy-puppy--tool-${toolVariant} ${toolAction ? `sy-puppy--action-${toolVariant}-${toolAction}` : ''}`
         : '';
     $: wageCardClass = showWageCard ? 'sy-puppy--show-wage-card' : '';
-    $: mounted, testModeEnabled, testModeIntervalMs, syncTestMode();
+    $: mounted, testModeEnabled, testModeIntervalMs, visible, syncTestMode();
 </script>
 
 {#if visible}
@@ -887,6 +875,36 @@
                     </g>
                 </g>
 
+                <g class="sy-puppy__prop sy-puppy__tool sy-puppy__tool--av">
+                    <rect x="78" y="-28" width="34" height="28" rx="3" fill="#eff4ff" stroke="#1a1f3c" stroke-width="2"/>
+                    <rect x="78" y="-28" width="34" height="6" rx="2" fill="#6f7cff" stroke="#1a1f3c" stroke-width="1.5"/>
+                    <line x1="89" y1="-22" x2="89" y2="0" stroke="#9db2ff" stroke-width="1.5"/>
+                    <line x1="100" y1="-22" x2="100" y2="0" stroke="#9db2ff" stroke-width="1.5"/>
+                    <line x1="78" y1="-14" x2="112" y2="-14" stroke="#9db2ff" stroke-width="1.5"/>
+                    <line x1="78" y1="-7" x2="112" y2="-7" stroke="#9db2ff" stroke-width="1.5"/>
+                    <g class="sy-puppy__tool-mark sy-puppy__tool-mark--av-get sy-puppy__tool-mark--av-search sy-puppy__tool-mark--av-get_primary_key_values">
+                        <circle cx="106" cy="-22" r="4" fill="#d9f4ff" stroke="#1a1f3c" stroke-width="1"/>
+                        <line x1="109" y1="-19" x2="112" y2="-16" stroke="#1a1f3c" stroke-width="1.5"/>
+                    </g>
+                    <g class="sy-puppy__tool-mark sy-puppy__tool-mark--av-add_rows sy-puppy__tool-mark--av-duplicate_block">
+                        <rect x="102" y="-27" width="8" height="8" fill="#c4ff72" stroke="#1a1f3c" stroke-width="1"/>
+                        <line x1="106" y1="-25" x2="106" y2="-21" stroke="#1a1f3c" stroke-width="1.2"/>
+                        <line x1="104" y1="-23" x2="108" y2="-23" stroke="#1a1f3c" stroke-width="1.2"/>
+                    </g>
+                    <g class="sy-puppy__tool-mark sy-puppy__tool-mark--av-remove_rows sy-puppy__tool-mark--av-remove_column">
+                        <line x1="102" y1="-26" x2="110" y2="-18" stroke="#ff4d6d" stroke-width="2"/>
+                        <line x1="110" y1="-26" x2="102" y2="-18" stroke="#ff4d6d" stroke-width="2"/>
+                    </g>
+                    <g class="sy-puppy__tool-mark sy-puppy__tool-mark--av-add_column">
+                        <line x1="104" y1="-27" x2="104" y2="-18" stroke="#ffd040" stroke-width="2"/>
+                        <line x1="100" y1="-23" x2="108" y2="-23" stroke="#ffd040" stroke-width="2"/>
+                    </g>
+                    <g class="sy-puppy__tool-mark sy-puppy__tool-mark--av-set_cell sy-puppy__tool-mark--av-batch_set_cells">
+                        <rect x="102" y="-27" width="8" height="8" fill="#8fd2ff" stroke="#1a1f3c" stroke-width="1"/>
+                        <rect x="104" y="-25" width="4" height="4" fill="#1a1f3c"/>
+                    </g>
+                </g>
+
                 <g class="sy-puppy__prop sy-puppy__tool sy-puppy__tool--file">
                     <rect x="90" y="52" width="32" height="28" fill="#ddeeff" stroke="#1a1f3c" stroke-width="2"/>
                     <rect x="93" y="48" width="26" height="8" fill="#c8dcff" stroke="#1a1f3c" stroke-width="1.5"/>
@@ -1197,6 +1215,16 @@
         animation: sy-puppy-bubble-in-down 0.18s steps(3);
     }
 
+    .sy-puppy__bubble--wage-card span {
+        color: #1f315c;
+        font-weight: 700;
+        text-shadow:
+            -1px 0 rgba(255, 255, 255, 0.85),
+            1px 0 rgba(255, 255, 255, 0.85),
+            0 -1px rgba(255, 255, 255, 0.85),
+            0 1px rgba(255, 255, 255, 0.85);
+    }
+
     .sy-puppy__bubble.sy-puppy__bubble--wage-card-tail::after {
         left: 34px;
         top: -11px;
@@ -1301,6 +1329,7 @@
     .sy-puppy__tool--notebook { transform-origin: -26px 42px; }
     .sy-puppy__tool--document { transform-origin: -28px 22px; }
     .sy-puppy__tool--block { transform-origin: 34px -22px; }
+    .sy-puppy__tool--av { transform-origin: 96px -14px; }
     .sy-puppy__tool--search { transform-origin: 48px -12px; }
     .sy-puppy__tool--file { transform-origin: 104px 66px; }
     .sy-puppy__tool--tag { transform-origin: 106px 22px; }
@@ -1315,6 +1344,7 @@
     .sy-puppy--tool-notebook .sy-puppy__tool--notebook,
     .sy-puppy--tool-document .sy-puppy__tool--document,
     .sy-puppy--tool-block .sy-puppy__tool--block,
+    .sy-puppy--tool-av .sy-puppy__tool--av,
     .sy-puppy--tool-file .sy-puppy__tool--file,
     .sy-puppy--tool-search .sy-puppy__tool--search,
     .sy-puppy--tool-tag .sy-puppy__tool--tag,
@@ -1374,6 +1404,16 @@
     .sy-puppy--action-block-exists .sy-puppy__tool-mark--block-exists,
     .sy-puppy--action-block-word_count .sy-puppy__tool-mark--block-word_count,
     .sy-puppy--action-block-recent_updated .sy-puppy__tool-mark--block-recent_updated,
+    .sy-puppy--action-av-get .sy-puppy__tool-mark--av-get,
+    .sy-puppy--action-av-search .sy-puppy__tool-mark--av-search,
+    .sy-puppy--action-av-get_primary_key_values .sy-puppy__tool-mark--av-get_primary_key_values,
+    .sy-puppy--action-av-add_rows .sy-puppy__tool-mark--av-add_rows,
+    .sy-puppy--action-av-remove_rows .sy-puppy__tool-mark--av-remove_rows,
+    .sy-puppy--action-av-add_column .sy-puppy__tool-mark--av-add_column,
+    .sy-puppy--action-av-remove_column .sy-puppy__tool-mark--av-remove_column,
+    .sy-puppy--action-av-set_cell .sy-puppy__tool-mark--av-set_cell,
+    .sy-puppy--action-av-batch_set_cells .sy-puppy__tool-mark--av-batch_set_cells,
+    .sy-puppy--action-av-duplicate_block .sy-puppy__tool-mark--av-duplicate_block,
     .sy-puppy--action-file-upload_asset .sy-puppy__tool-mark--file-upload_asset,
     .sy-puppy--action-file-export_md .sy-puppy__tool-mark--file-export_md,
     .sy-puppy--action-file-export_resources .sy-puppy__tool-mark--file-export_resources,
@@ -1556,6 +1596,10 @@
         animation: sy-puppy-block-idle 0.8s steps(2) infinite;
     }
 
+    .sy-puppy--tool-av .sy-puppy__tool--av {
+        animation: sy-puppy-av-idle 1.1s ease-in-out infinite;
+    }
+
     .sy-puppy--tool-file .sy-puppy__tool--file {
         animation: sy-puppy-file-idle 1.2s ease-in-out infinite;
     }
@@ -1579,12 +1623,14 @@
 
     .sy-puppy--tool-file .sy-puppy__cat,
     .sy-puppy--tool-tag .sy-puppy__cat,
-    .sy-puppy--tool-system .sy-puppy__cat {
+    .sy-puppy--tool-system .sy-puppy__cat,
+    .sy-puppy--tool-mascot .sy-puppy__cat {
         transform-origin: 68px 54px;
     }
 
     .sy-puppy--tool-block .sy-puppy__cat,
-    .sy-puppy--tool-search .sy-puppy__cat {
+    .sy-puppy--tool-search .sy-puppy__cat,
+    .sy-puppy--tool-av .sy-puppy__cat {
         transform-origin: 48px 34px;
     }
 
@@ -1605,24 +1651,30 @@
     .sy-puppy--reading.sy-puppy--tool-file .sy-puppy__paw--right,
     .sy-puppy--reading.sy-puppy--tool-tag .sy-puppy__paw--right,
     .sy-puppy--reading.sy-puppy--tool-system .sy-puppy__paw--right,
+    .sy-puppy--reading.sy-puppy--tool-mascot .sy-puppy__paw--right,
     .sy-puppy--writing.sy-puppy--tool-file .sy-puppy__paw--right,
     .sy-puppy--writing.sy-puppy--tool-tag .sy-puppy__paw--right,
-    .sy-puppy--writing.sy-puppy--tool-system .sy-puppy__paw--right {
+    .sy-puppy--writing.sy-puppy--tool-system .sy-puppy__paw--right,
+    .sy-puppy--writing.sy-puppy--tool-mascot .sy-puppy__paw--right {
         animation: sy-puppy-paw-reach-right 0.46s steps(2) infinite;
     }
 
     .sy-puppy--reading.sy-puppy--tool-file .sy-puppy__paw--left,
     .sy-puppy--reading.sy-puppy--tool-tag .sy-puppy__paw--left,
     .sy-puppy--reading.sy-puppy--tool-system .sy-puppy__paw--left,
+    .sy-puppy--reading.sy-puppy--tool-mascot .sy-puppy__paw--left,
     .sy-puppy--writing.sy-puppy--tool-file .sy-puppy__paw--left,
     .sy-puppy--writing.sy-puppy--tool-tag .sy-puppy__paw--left,
-    .sy-puppy--writing.sy-puppy--tool-system .sy-puppy__paw--left {
+    .sy-puppy--writing.sy-puppy--tool-system .sy-puppy__paw--left,
+    .sy-puppy--writing.sy-puppy--tool-mascot .sy-puppy__paw--left {
         animation: sy-puppy-paw-brace-left 0.46s steps(2) infinite;
     }
 
     .sy-puppy--reading.sy-puppy--tool-block .sy-puppy__paw--left,
     .sy-puppy--reading.sy-puppy--tool-search .sy-puppy__paw--left,
+    .sy-puppy--reading.sy-puppy--tool-av .sy-puppy__paw--left,
     .sy-puppy--writing.sy-puppy--tool-block .sy-puppy__paw--left,
+    .sy-puppy--writing.sy-puppy--tool-av .sy-puppy__paw--left,
     .sy-puppy--writing.sy-puppy--tool-search .sy-puppy__paw--left,
     .sy-puppy--writing.sy-puppy--tool-search .sy-puppy__paw--left {
         animation: sy-puppy-paw-reach-up-left 0.4s steps(2) infinite;
@@ -1630,7 +1682,9 @@
 
     .sy-puppy--reading.sy-puppy--tool-block .sy-puppy__paw--right,
     .sy-puppy--reading.sy-puppy--tool-search .sy-puppy__paw--right,
+    .sy-puppy--reading.sy-puppy--tool-av .sy-puppy__paw--right,
     .sy-puppy--writing.sy-puppy--tool-block .sy-puppy__paw--right,
+    .sy-puppy--writing.sy-puppy--tool-av .sy-puppy__paw--right,
     .sy-puppy--writing.sy-puppy--tool-search .sy-puppy__paw--right {
         animation: sy-puppy-paw-reach-up-right 0.4s steps(2) infinite 0.08s;
     }
@@ -1647,7 +1701,15 @@
         animation: sy-puppy-track-search 1s steps(3) infinite;
     }
 
+    .sy-puppy--reading.sy-puppy--tool-av .sy-puppy__cat {
+        animation: sy-puppy-track-search 1s steps(3) infinite;
+    }
+
     .sy-puppy--reading.sy-puppy--tool-system .sy-puppy__cat {
+        animation: sy-puppy-monitor-right 1s steps(2) infinite;
+    }
+
+    .sy-puppy--reading.sy-puppy--tool-mascot .sy-puppy__cat {
         animation: sy-puppy-monitor-right 1s steps(2) infinite;
     }
 
@@ -1661,6 +1723,10 @@
         animation: sy-puppy-search-scan 1s ease-in-out infinite;
     }
 
+    .sy-puppy--reading.sy-puppy--tool-av .sy-puppy__tool--av {
+        animation: sy-puppy-search-scan 1s ease-in-out infinite;
+    }
+
     .sy-puppy--reading.sy-puppy--tool-system .sy-puppy__tool--system {
         animation: sy-puppy-system-pulse 0.95s ease-in-out infinite;
     }
@@ -1669,7 +1735,15 @@
         animation: sy-puppy-block-build 0.42s steps(2) infinite;
     }
 
+    .sy-puppy--writing.sy-puppy--tool-av .sy-puppy__tool--av {
+        animation: sy-puppy-block-build 0.42s steps(2) infinite;
+    }
+
     .sy-puppy--writing.sy-puppy--tool-block .sy-puppy__cat {
+        animation: sy-puppy-build-reach 0.42s steps(2) infinite;
+    }
+
+    .sy-puppy--writing.sy-puppy--tool-av .sy-puppy__cat {
         animation: sy-puppy-build-reach 0.42s steps(2) infinite;
     }
 
@@ -1704,6 +1778,10 @@
 
     .sy-puppy--writing.sy-puppy--tool-tag .sy-puppy__cat {
         animation: sy-puppy-stamp-right 0.4s steps(2) infinite;
+    }
+
+    .sy-puppy--writing.sy-puppy--tool-mascot .sy-puppy__cat {
+        animation: sy-puppy-push-right 0.42s steps(2) infinite;
     }
 
     .sy-puppy--moving .sy-puppy__tool {
@@ -2030,6 +2108,11 @@
     @keyframes sy-puppy-block-idle {
         0%, 100% { transform: translateY(-6px); }
         50% { transform: translateY(0); }
+    }
+
+    @keyframes sy-puppy-av-idle {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        50% { transform: translate(-1px, -1px) scale(1.02); }
     }
 
     @keyframes sy-puppy-file-idle {

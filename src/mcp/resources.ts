@@ -171,7 +171,7 @@ function renderToolOverview(): string {
     return [
         '# SiYuan MCP Tool Overview',
         '',
-        'This server exposes 8 aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, `system`, and `mascot`.',
+        'This server exposes 9 aggregated tools: `notebook`, `document`, `block`, `av`, `file`, `search`, `tag`, `system`, and `mascot`.',
         '',
         '## High-risk actions',
         '',
@@ -388,7 +388,7 @@ function renderAiLayoutGuide(): string {
         '- Real SiYuan database blocks use `type = "av"` and are stored as `NodeAttributeView` containers such as `<div data-type="NodeAttributeView" ...></div>`.',
         '- Databases support records, multiple views, filters, sorts, relations, and rollups; they are not just prettier tables.',
         '- Do not describe a Markdown table as a database block, and do not describe a database block as just a table.',
-        '- If the current MCP workflow cannot reliably create and populate a real `av` block, do not fake completion with a Markdown table or a borrowed `NodeAttributeView` container.',
+        '- The dedicated MCP `av` tool can operate on existing real databases and duplicate existing database blocks, but if a workflow still cannot create a brand-new real `av` block from scratch, do not fake completion with a Markdown table or a borrowed `NodeAttributeView` container.',
         '',
         '## Recommended usage rules',
         '',

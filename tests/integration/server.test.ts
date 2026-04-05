@@ -96,6 +96,7 @@ describe('MCP Server Integration', () => {
             expect(toolNames).toContain('notebook');
             expect(toolNames).toContain('document');
             expect(toolNames).toContain('block');
+            expect(toolNames).toContain('av');
             expect(toolNames).toContain('search');
             expect(toolNames).toContain('file');
             expect(toolNames).toContain('tag');

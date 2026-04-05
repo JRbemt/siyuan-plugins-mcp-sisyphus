@@ -2,7 +2,7 @@
     import { onMount } from "svelte";
     import { fetchPost, showMessage } from "siyuan";
 
-    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type BlockAction, type DocumentAction, type FileAction, type MascotAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
+    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type AvAction, type BlockAction, type DocumentAction, type FileAction, type MascotAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
     import {
     buildDefaultPuppySettings,
     loadPersistedPuppySettings,
@@ -16,7 +16,7 @@
 
     export let plugin: any;
 
-    type GroupAction = NotebookAction | DocumentAction | BlockAction | FileAction | SearchAction | TagAction | SystemAction | MascotAction;
+    type GroupAction = NotebookAction | DocumentAction | BlockAction | AvAction | FileAction | SearchAction | TagAction | SystemAction | MascotAction;
     type NotebookPermission = 'none' | 'r' | 'rw' | 'rwd';
     const VALID_PERMISSIONS: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
     const LEGACY_PERMISSION_MAP = {
@@ -106,6 +106,23 @@
             ],
         },
         {
+            category: "av",
+            icon: "🗃️",
+            groupKey: "Databases",
+            actions: [
+                { key: "get", title: "Get Database", description: "Get the full attribute view payload by AV ID." },
+                { key: "search", title: "Search Databases", description: "Search attribute views by keyword." },
+                { key: "add_rows", title: "Add Rows", description: "Add existing blocks as rows in a database." },
+                { key: "remove_rows", title: "Remove Rows", description: "Remove bound rows from a database." },
+                { key: "add_column", title: "Add Column", description: "Add a column to a database." },
+                { key: "remove_column", title: "Remove Column", description: "Remove a column from a database." },
+                { key: "set_cell", title: "Set Cell", description: "Update one cell with a typed value payload." },
+                { key: "batch_set_cells", title: "Batch Set Cells", description: "Batch update multiple database cells." },
+                { key: "duplicate_block", title: "Duplicate Database Block", description: "Duplicate an existing database block." },
+                { key: "get_primary_key_values", title: "Get Primary Key Values", description: "Get database primary key rows with optional filtering." },
+            ],
+        },
+        {
             category: "file",
             icon: "📁",
             groupKey: "Files",
@@ -174,7 +191,7 @@
     const PUPPY_GROUP_LABEL = "🐾 Mascot";
     const PERM_GROUP_KEY = "Permissions";
     const PERM_GROUP_LABEL = "🔒 Permissions";
-    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`), PUPPY_GROUP_LABEL, USER_RULES_GROUP_LABEL];
+    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.filter((group) => group.category !== "mascot").map((group) => `${group.icon} ${group.groupKey}`), PUPPY_GROUP_LABEL, USER_RULES_GROUP_LABEL];
 
     let config: ToolConfig = buildDefaultToolConfig();
     let groups = defaultGroups;
@@ -186,6 +203,7 @@
     let notebookItems: ISettingItem[] = [];
     let documentItems: ISettingItem[] = [];
     let blockItems: ISettingItem[] = [];
+    let avItems: ISettingItem[] = [];
     let fileItems: ISettingItem[] = [];
     let searchItems: ISettingItem[] = [];
     let tagItems: ISettingItem[] = [];
@@ -252,6 +270,14 @@
         return items;
     });
 
+    function getGroupDefinition(category: ToolCategory): GroupDefinition {
+        const definition = GROUP_DEFINITIONS.find((item) => item.category === category);
+        if (!definition) {
+            throw new Error(`Unknown tool category: ${category}`);
+        }
+        return definition;
+    }
+
     function buildPermItems(): ISettingItem[] {
         if (notebooks.length === 0) {
             return [{
@@ -279,8 +305,8 @@
 
     function buildPuppyItems(): ISettingItem[] {
         return [
-            buildToolToggleItem(GROUP_DEFINITIONS[7]),
-            ...buildActionItems(GROUP_DEFINITIONS[7]),
+            buildToolToggleItem(getGroupDefinition("mascot")),
+            ...buildActionItems(getGroupDefinition("mascot")),
             {
                 type: "checkbox",
                 key: "puppy__visible",
@@ -342,13 +368,14 @@
 
     function refreshItems() {
         puppyItems = buildPuppyItems();
-        notebookItems = [buildToolToggleItem(GROUP_DEFINITIONS[0]), ...buildActionItems(GROUP_DEFINITIONS[0])];
-        documentItems = [buildToolToggleItem(GROUP_DEFINITIONS[1]), ...buildActionItems(GROUP_DEFINITIONS[1])];
-        blockItems = [buildToolToggleItem(GROUP_DEFINITIONS[2]), ...buildActionItems(GROUP_DEFINITIONS[2])];
-        fileItems = [buildToolToggleItem(GROUP_DEFINITIONS[3]), ...buildActionItems(GROUP_DEFINITIONS[3])];
-        searchItems = [buildToolToggleItem(GROUP_DEFINITIONS[4]), ...buildActionItems(GROUP_DEFINITIONS[4])];
-        tagItems = [buildToolToggleItem(GROUP_DEFINITIONS[5]), ...buildActionItems(GROUP_DEFINITIONS[5])];
-        systemItems = [buildToolToggleItem(GROUP_DEFINITIONS[6]), ...buildActionItems(GROUP_DEFINITIONS[6])];
+        notebookItems = [buildToolToggleItem(getGroupDefinition("notebook")), ...buildActionItems(getGroupDefinition("notebook"))];
+        documentItems = [buildToolToggleItem(getGroupDefinition("document")), ...buildActionItems(getGroupDefinition("document"))];
+        blockItems = [buildToolToggleItem(getGroupDefinition("block")), ...buildActionItems(getGroupDefinition("block"))];
+        avItems = [buildToolToggleItem(getGroupDefinition("av")), ...buildActionItems(getGroupDefinition("av"))];
+        fileItems = [buildToolToggleItem(getGroupDefinition("file")), ...buildActionItems(getGroupDefinition("file"))];
+        searchItems = [buildToolToggleItem(getGroupDefinition("search")), ...buildActionItems(getGroupDefinition("search"))];
+        tagItems = [buildToolToggleItem(getGroupDefinition("tag")), ...buildActionItems(getGroupDefinition("tag"))];
+        systemItems = [buildToolToggleItem(getGroupDefinition("system")), ...buildActionItems(getGroupDefinition("system"))];
         userRulesItems = buildUserRulesItems();
         permItems = buildPermItems();
     }
@@ -356,7 +383,7 @@
     $: userRulesGroupLabel = `🧭 ${getLabel(USER_RULES_GROUP_KEY, USER_RULES_GROUP_LABEL)}`;
     $: puppyGroupLabel = `🐾 ${getLabel(PUPPY_GROUP_KEY, PUPPY_GROUP_LABEL)}`;
     $: permGroupLabel = `🔒 ${getLabel(PERM_GROUP_KEY, PERM_GROUP_LABEL)}`;
-    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.slice(0, 7).map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), puppyGroupLabel, userRulesGroupLabel];
+    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.filter((group) => group.category !== "mascot").map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), puppyGroupLabel, userRulesGroupLabel];
     $: if (!groups.includes(focusGroup)) {
         focusGroup = groups[0];
     }
@@ -569,10 +596,11 @@
         <SettingPanel group={groups[1]} settingItems={notebookItems} display={focusGroup === groups[1]} on:changed={onChanged} />
         <SettingPanel group={groups[2]} settingItems={documentItems} display={focusGroup === groups[2]} on:changed={onChanged} />
         <SettingPanel group={groups[3]} settingItems={blockItems} display={focusGroup === groups[3]} on:changed={onChanged} />
-        <SettingPanel group={groups[4]} settingItems={fileItems} display={focusGroup === groups[4]} on:changed={onChanged} />
-        <SettingPanel group={groups[5]} settingItems={searchItems} display={focusGroup === groups[5]} on:changed={onChanged} />
-        <SettingPanel group={groups[6]} settingItems={tagItems} display={focusGroup === groups[6]} on:changed={onChanged} />
-        <SettingPanel group={groups[7]} settingItems={systemItems} display={focusGroup === groups[7]} on:changed={onChanged} />
+        <SettingPanel group={groups[4]} settingItems={avItems} display={focusGroup === groups[4]} on:changed={onChanged} />
+        <SettingPanel group={groups[5]} settingItems={fileItems} display={focusGroup === groups[5]} on:changed={onChanged} />
+        <SettingPanel group={groups[6]} settingItems={searchItems} display={focusGroup === groups[6]} on:changed={onChanged} />
+        <SettingPanel group={groups[7]} settingItems={tagItems} display={focusGroup === groups[7]} on:changed={onChanged} />
+        <SettingPanel group={groups[8]} settingItems={systemItems} display={focusGroup === groups[8]} on:changed={onChanged} />
         <SettingPanel group={puppyGroupLabel} settingItems={puppyItems} display={focusGroup === puppyGroupLabel} on:changed={onChanged} />
         <SettingPanel group={userRulesGroupLabel} settingItems={userRulesItems} display={focusGroup === userRulesGroupLabel} on:changed={onChanged} />
     </div>

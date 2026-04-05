@@ -38,6 +38,21 @@ const ALL_ENABLED_CONFIG = {
             get_attrs: true,
         },
     },
+    av: {
+        enabled: true,
+        actions: {
+            get: true,
+            search: true,
+            add_rows: true,
+            remove_rows: true,
+            add_column: true,
+            remove_column: true,
+            set_cell: true,
+            batch_set_cells: true,
+            duplicate_block: true,
+            get_primary_key_values: true,
+        },
+    },
     file: {
         enabled: true,
         actions: {
@@ -75,6 +90,14 @@ const ALL_ENABLED_CONFIG = {
             push_err_msg: true,
             get_version: true,
             get_current_time: true,
+        },
+    },
+    mascot: {
+        enabled: true,
+        actions: {
+            get_balance: true,
+            shop: true,
+            buy: true,
         },
     },
 };
@@ -164,7 +187,7 @@ async function assertPermissionDenied(client, name, args) {
 async function assertDefaultToolList() {
     await withConfigMode('default', async () => withClient(async (client) => {
         const tools = (await client.listTools()).tools;
-        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system', 'mascot']);
+        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'av', 'file', 'search', 'tag', 'system', 'mascot']);
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
         assert.match(descriptions.notebook, /Common actions: list, create, open, close, rename, get_conf, get_child_docs/);
@@ -185,6 +208,9 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /Common actions: .*get_children/);
         assert.match(descriptions.block, /Additional actions: .*move/);
         assert.match(descriptions.block, /Read siyuan:\/\/help\/action\/block\/\{action\} for details/);
+        assert.match(descriptions.av, /Common actions: get, search, get_primary_key_values/);
+        assert.match(descriptions.av, /Additional actions: add_rows, remove_rows, add_column, remove_column, set_cell, batch_set_cells, duplicate_block/);
+        assert.match(descriptions.av, /database/i);
         assert.match(descriptions.file, /Common actions: upload_asset, export_md/);
         assert.match(descriptions.file, /Additional actions: render_template, render_sprig, export_resources/);
         assert.match(descriptions.file, /confirmLargeFile/);
@@ -211,6 +237,8 @@ async function assertDefaultToolList() {
         assert.ok('id' in schemas.document.properties);
         assert.ok('path' in schemas.document.properties);
         assert.ok('dataType' in schemas.block.properties);
+        assert.ok('avID' in schemas.av.properties);
+        assert.ok('keyName' in schemas.av.properties);
         assert.ok('template' in schemas.file.properties);
         assert.ok('query' in schemas.search.properties);
         assert.ok('stmt' in schemas.search.properties);
@@ -236,7 +264,7 @@ async function assertDefaultToolList() {
         const toolOverviewText = await readResourceText(client, 'siyuan://help/tool-overview');
         assert.match(toolOverviewText, /SiYuan MCP Tool Overview/);
         assert.match(toolOverviewText, /document\(action="move"\)/);
-        assert.match(toolOverviewText, /8 aggregated tools/);
+        assert.match(toolOverviewText, /9 aggregated tools/);
         assert.match(toolOverviewText, /#标签#/);
         assert.match(toolOverviewText, /custom-riff-decks/);
         assert.match(toolOverviewText, /ai-layout-guide/);
@@ -336,6 +364,49 @@ async function assertDefaultToolList() {
         assert.equal(disabledActionError.error.tool, 'document');
         assert.equal(disabledActionError.error.action, 'remove');
     }));
+}
+
+async function runAvSmoke(client, createdBlockIds) {
+    const avSearch = await callToolJson(client, 'av', {
+        action: 'search',
+        keyword: '',
+    });
+    assert.ok(Array.isArray(avSearch.json.results), 'av search should return results array');
+
+    const candidate = avSearch.json.results.find((item) => item && typeof item.id === 'string');
+    if (!candidate) {
+        console.log('T24 SKIP - no existing AV found in workspace for live AV smoke');
+        return;
+    }
+
+    const avID = candidate.id;
+    const avGet = await callToolJson(client, 'av', {
+        action: 'get',
+        id: avID,
+    });
+    assert.equal(avGet.json.id, avID);
+    assert.equal(typeof avGet.json.av, 'object');
+
+    const avPrimary = await callToolJson(client, 'av', {
+        action: 'get_primary_key_values',
+        avID,
+        page: 1,
+        pageSize: 5,
+    });
+    assert.equal(avPrimary.json.avID, avID);
+    assert.equal(typeof avPrimary.json.name, 'string');
+    assert.ok(Array.isArray(avPrimary.json.blockIDs));
+    assert.ok(Array.isArray(avPrimary.json.rows));
+
+    const avDuplicate = await callToolJson(client, 'av', {
+        action: 'duplicate_block',
+        avID,
+    });
+    assert.equal(avDuplicate.json.success, true);
+    assert.equal(typeof avDuplicate.json.avID, 'string');
+    assert.equal(typeof avDuplicate.json.blockID, 'string');
+    createdBlockIds.push(avDuplicate.json.blockID);
+    console.log(`T24 PASS - AV read/duplicate smoke on ${avID}`);
 }
 
 async function runLiveSmoke() {
@@ -999,6 +1070,8 @@ async function runLiveSmoke() {
             });
             removeItem(createdBlockIds, writeRecoveredBlockId);
             console.log('T23 PASS - write restores tested reads and writes');
+
+            await runAvSmoke(client, createdBlockIds);
 
             await callToolJson(client, 'document', {
                 action: 'remove',

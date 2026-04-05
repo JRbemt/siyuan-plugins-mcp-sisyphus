@@ -202,6 +202,36 @@ export function listDocumentTools(config: CategoryToolConfig<DocumentAction>) {
     );
 }
 
+const GET_HPATH_INDEXING_RETRY_DELAYS_MS = [120, 240];
+
+function isIndexingError(error: unknown): boolean {
+    return error instanceof Error
+        && /SiYuan API error:\s*-1\s*-\s*indexing/i.test(error.message);
+}
+
+async function sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getHPathByIdWithRetry(client: SiYuanClient, id: string): Promise<string> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= GET_HPATH_INDEXING_RETRY_DELAYS_MS.length; attempt += 1) {
+        try {
+            return await documentApi.getHPathByID(client, id);
+        } catch (error) {
+            if (!isIndexingError(error) || attempt === GET_HPATH_INDEXING_RETRY_DELAYS_MS.length) {
+                lastError = error;
+                break;
+            }
+            lastError = error;
+            await sleep(GET_HPATH_INDEXING_RETRY_DELAYS_MS[attempt]);
+        }
+    }
+
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(`Failed to resolve hierarchical path for document "${id}" because SiYuan indexing is still catching up. Retry shortly after create. Last error: ${message}`);
+}
+
 function normalizeDocumentCoverSource(source: string): { source: string; titleImg: string } {
     const normalizedSource = source.trim();
     if (!normalizedSource) {
@@ -472,7 +502,7 @@ const handleGetHPath: DocumentActionHandler = async ({ client, permMgr, rawArgs 
     if (parsed.id) {
         const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
         if (denied) return denied;
-        const result = await documentApi.getHPathByID(client, parsed.id);
+        const result = await getHPathByIdWithRetry(client, parsed.id);
         return createJsonResult(result);
     }
     const result = await documentApi.getHPathByPath(client, parsed.notebook!, parsed.path!);

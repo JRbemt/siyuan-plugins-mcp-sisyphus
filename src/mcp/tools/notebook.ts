@@ -147,6 +147,59 @@ function normalizeNotebookChildDocsError(error: unknown, notebookId: string, exi
     return new Error(`Failed to get child documents for notebook "${notebookId}" at "/". ${message}`);
 }
 
+function isRetryableNotebookChildDocsError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /initializing|kernel still initializing|notebook is currently closed/i.test(message);
+}
+
+async function retryNotebookChildDocs(
+    client: SiYuanClient,
+    notebookId: string,
+    retries: number,
+    delayMs: number,
+): Promise<{ children?: Awaited<ReturnType<typeof listChildDocumentsByPath>>; error?: unknown; attempts: number }> {
+    let attempts = 0;
+
+    while (attempts <= retries) {
+        attempts += 1;
+        try {
+            const children = await listChildDocumentsByPath(client, notebookId, '/');
+            return { children, attempts };
+        } catch (error) {
+            if (attempts > retries || !isRetryableNotebookChildDocsError(error)) {
+                return { error, attempts };
+            }
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+    }
+
+    return { error: new Error(`Failed to get child documents for notebook "${notebookId}".`), attempts };
+}
+
+function createNotebookChildDocsStateErrorResult(notebookId: string, message: string, retryAttempts: number, retryWindowMs: number): ToolResult {
+    return {
+        content: [{
+            type: 'text',
+            text: JSON.stringify({
+                error: {
+                    type: 'internal_error',
+                    tool: NOTEBOOK_TOOL_NAME,
+                    action: 'get_child_docs',
+                    message,
+                    reason: 'notebook_closed_or_initializing',
+                    retryable: true,
+                    suggestedNextAction: 'open_notebook_or_retry',
+                    notebook: notebookId,
+                    retryAttempts,
+                    retryWindowMs,
+                    hint: 'This usually happens right after notebook(action="close"). Re-open the notebook first, or retry after a short wait.',
+                },
+            }, null, 2),
+        }],
+        isError: true,
+    };
+}
+
 export async function callNotebookTool(
     client: SiYuanClient,
     args: Record<string, unknown> | undefined,
@@ -262,6 +315,8 @@ export async function callNotebookTool(
             }
             case 'get_child_docs': {
                 const parsed = NotebookGetChildDocsSchema.parse(rawArgs);
+                const retryCount = 2;
+                const retryDelayMs = 150;
                 const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
                 if (denied) {
                     return denied;
@@ -273,13 +328,15 @@ export async function callNotebookTool(
                     throw normalizeNotebookChildDocsError(new Error('Notebook not found in lsNotebooks result.'), parsed.notebook, false, false);
                 }
 
-                let children;
-                try {
-                    children = await listChildDocumentsByPath(client, parsed.notebook, '/');
-                } catch (error) {
-                    throw normalizeNotebookChildDocsError(error, parsed.notebook, true, Boolean(notebook.closed));
+                const retryResult = await retryNotebookChildDocs(client, parsed.notebook, retryCount, retryDelayMs);
+                if (retryResult.error) {
+                    const normalized = normalizeNotebookChildDocsError(retryResult.error, parsed.notebook, true, Boolean(notebook.closed));
+                    if (notebook.closed) {
+                        return createNotebookChildDocsStateErrorResult(parsed.notebook, normalized.message, retryResult.attempts, retryCount * retryDelayMs);
+                    }
+                    throw normalized;
                 }
-                return createJsonResult(children);
+                return createJsonResult(retryResult.children ?? []);
             }
             default: {
                 const _exhaustive: never = parsedAction;

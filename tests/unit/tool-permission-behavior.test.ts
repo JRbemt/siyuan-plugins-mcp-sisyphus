@@ -8,6 +8,7 @@ import { callSearchTool } from '@/mcp/tools/search';
 import * as blockApi from '@/api/block';
 import * as documentApi from '@/api/document';
 import * as searchApi from '@/api/search';
+import * as contextTools from '@/mcp/tools/context';
 
 function parseResult(result: Awaited<ReturnType<typeof callSearchTool>> | Awaited<ReturnType<typeof callBlockTool>> | Awaited<ReturnType<typeof callDocumentTool>>) {
     return JSON.parse(result.content[0].text);
@@ -239,6 +240,9 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.backlinks[0].id).toBe('ref-block');
         expect(parsed.backmentions).toHaveLength(1);
         expect(parsed.backmentions[0].id).toBe('mention-block');
+        expect(parsed.sourcePayloadMissing).toBe(true);
+        expect(parsed.fallbackQuery).toBe('sql');
+        expect(parsed.resultConfidence).toBe('fallback');
         expect(parsed.warning).toMatch(/SQL fallback/);
     });
 
@@ -288,7 +292,28 @@ describe('tool permission and filtering behavior', () => {
 
         expect(parsed.backmentions).toHaveLength(1);
         expect(parsed.backmentions[0].id).toBe('mention-block');
+        expect(parsed.sourcePayloadMissing).toBe(true);
+        expect(parsed.fallbackQuery).toBe('sql');
+        expect(parsed.resultConfidence).toBe('fallback');
         expect(parsed.warning).toMatch(/SQL fallback/);
+    });
+
+    it('retries get_hpath when SiYuan is still indexing', async () => {
+        vi.spyOn(contextTools, 'ensurePermissionForDocumentId').mockResolvedValue({
+            context: { documentId: 'doc-1', notebook: 'allowed', path: '/doc-1.sy' },
+            denied: null,
+        } as never);
+        vi.spyOn(documentApi, 'getHPathByID')
+            .mockRejectedValueOnce(new Error('SiYuan API error: -1 - indexing'))
+            .mockResolvedValueOnce('/Projects/New Doc');
+
+        const result = await callDocumentTool({} as never, {
+            action: 'get_hpath',
+            id: 'doc-1',
+        }, documentConfig, permMgr as never);
+
+        expect(parseResult(result)).toBe('/Projects/New Doc');
+        expect(documentApi.getHPathByID).toHaveBeenCalledTimes(2);
     });
 
     it('prefers SQL ownership resolution for readable docs when filetree APIs misreport notebook', async () => {
@@ -333,20 +358,59 @@ describe('tool permission and filtering behavior', () => {
 
     it('filters recent updates before applying count', async () => {
         vi.spyOn(blockApi, 'getRecentUpdatedBlocks').mockResolvedValue([
-            { id: '1', box: 'allowed', content: 'a' },
-            { id: '2', box: 'blocked', content: 'b' },
-            { id: '3', box: 'allowed', content: 'c' },
+            { id: '1', box: 'allowed', root_id: 'doc-a', path: '/doc-a.sy', type: 'p', content: 'a' },
+            { id: '2', box: 'blocked', root_id: 'doc-b', path: '/doc-b.sy', type: 'p', content: 'b' },
+            { id: '3', box: 'allowed', root_id: 'doc-a', path: '/doc-a.sy', type: 'h', content: 'c' },
         ]);
+        vi.spyOn(searchApi, 'querySQL').mockImplementation(async (_client, stmt) => {
+            if (stmt.includes("WHERE id = 'doc-a'")) {
+                return [{
+                    id: 'doc-a',
+                    root_id: 'doc-a',
+                    box: 'allowed',
+                    path: '/doc-a.sy',
+                    hpath: '/Doc A',
+                    content: 'Doc A',
+                    type: 'd',
+                }];
+            }
+            return [];
+        });
+        vi.spyOn(blockApi, 'getDocInfo').mockResolvedValue({
+            id: 'doc-a',
+            rootID: 'doc-a',
+            name: 'Doc A.sy',
+        } as never);
+        vi.spyOn(documentApi, 'getPathByID').mockResolvedValue({
+            notebook: 'allowed',
+            path: '/doc-a.sy',
+        });
 
         const result = await callBlockTool({} as never, {
             action: 'recent_updated',
-            count: 1,
+            count: 2,
         }, blockConfig, permMgr as never);
         const parsed = parseResult(result);
 
-        expect(parsed.items).toHaveLength(1);
+        expect(parsed.items).toHaveLength(2);
         expect(parsed.items[0].id).toBe('1');
-        expect(parsed.count).toBe(1);
+        expect(parsed.documents).toEqual([{
+            documentId: 'doc-a',
+            notebook: 'allowed',
+            path: '/doc-a.sy',
+            hPath: '/Doc A',
+            name: 'Doc A',
+            updatedBlockCount: 2,
+            sampleBlocks: [
+                { id: '1', type: 'p', content: 'a', path: '/doc-a.sy' },
+                { id: '3', type: 'h', content: 'c', path: '/doc-a.sy' },
+            ],
+        }]);
+        expect(parsed.primaryView).toBe('documents');
+        expect(parsed.count).toBe(2);
+        expect(parsed.documentCount).toBe(1);
+        expect(parsed.containsLowLevelBlocks).toBe(true);
+        expect(parsed.grouping).toBe('document');
         expect(parsed.filteredOutCount).toBe(1);
         expect(parsed.partial).toBe(true);
     });

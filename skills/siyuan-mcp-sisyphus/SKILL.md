@@ -71,3 +71,54 @@ No direct `tag.create` — write `#标签#` into block markdown. Hierarchical: `
 ### Flashcard marking
 
 `block(action="set_attrs", id=..., attrs={"custom-riff-decks":"<deck-id>"})`. Use h2 as question, following blocks as answer.
+
+## AV / Database Pitfalls
+
+When operating SiYuan attribute views (`av`), prefer this workflow:
+
+1. Create columns with `av(action="add_column")`
+2. Create source docs/blocks with `document(action="create")`
+3. Bind existing blocks as rows with `av(action="add_rows")`
+4. Fetch the AV with `av(action="get")`
+5. Fill cells with `av(action="set_cell")` or `av(action="batch_set_cells")`
+
+### Important distinctions
+
+- `add_rows` does **not** create brand-new database rows from scratch; it binds **existing block IDs** into the database. Always create the source document/block first, then pass its `blockID` via `blockIDs`.
+- AV row identity is not the same as the source block identity:
+  - `blockID`: original document/block ID
+  - `itemId` / row `id`: the row binding ID inside the database
+- For cell updates, use the AV row ID (`itemId` / row `id`), **not** the original `blockID`.
+
+### Parameter gotchas
+
+- `av(action="add_rows")` requires `blockIDs`.
+- `av(action="set_cell")` and `av(action="batch_set_cells")` use `columnID`, **not** `keyID`.
+- Even if `av(action="get")` returns column metadata under a field named `key`, write operations still require `columnID`.
+
+### Practical notes
+
+- After `add_rows`, prefer the returned `rows[{ blockID, rowID }]` mapping directly.
+- If you need to re-read manually, call `av(action="get")` to map each row binding back to its source block:
+  - inspect `keyValues[].values[].blockID` for the bound source block
+  - use the returned row `id` / `itemId` for later `set_cell`
+- `set_cell` / `batch_set_cells` now reject source `blockID`s and return a suggested `rowID` when MCP can detect the mismatch.
+- Date values should use ISO strings, for example `2026-04-06T00:00:00+08:00`.
+
+### Minimal examples
+
+```ts
+// 1) create a source document/block first
+document(action="create", notebook="xxx", path="/记账/行1", markdown="内容")
+
+// 2) bind existing blocks into the AV as rows
+av(action="add_rows", avID="...", blockIDs=["行1-blockID", "行2-blockID"])
+
+// 3) set a single cell with row itemId + columnID
+av(action="set_cell", rowID="itemId", columnID="...", valueType="text", text="xxx")
+
+// 4) batch update cells with columnID
+av(action="batch_set_cells", items=[
+  { rowID: "itemId", columnID: "...", valueType: "text", text: "xxx" }
+])
+```

@@ -9,6 +9,7 @@ import { buildDefaultToolConfig, formatDangerousActionsList, normalizeToolConfig
 import { PermissionManager } from './permissions';
 import { listHelpResources, listHelpResourceTemplates, readHelpResource } from './resources';
 import { callBlockTool, listBlockTools } from './tools/block';
+import { callAvTool, listAvTools } from './tools/av';
 import { callDocumentTool, listDocumentTools } from './tools/document';
 import { callFileTool, listFileTools } from './tools/file';
 import { callNotebookTool, listNotebookTools } from './tools/notebook';
@@ -119,11 +120,13 @@ When the user asks for polished SiYuan content, consider native layout features 
 4. For metadata, workflow markers, or styling, use block attributes (\`name\`, \`alias\`, \`memo\`, \`bookmark\`, \`custom-*\`, \`style\`).
 5. For diagrams, charts, mind maps, use renderer code blocks (\`mindmap\`, \`mermaid\`, \`flowchart\`, \`graphviz\`, \`plantuml\`, \`echarts\`, \`abc\`).
 6. For playback, embeds, dynamic queries, or structured records, use \`video\`, \`audio\`, \`iframe\`, \`html\`, \`query_embed\`, or database blocks \`av\`.
+7. For real database operations, prefer the dedicated \`av\` tool instead of describing an \`av\` block abstractly.
 
 Critical anti-patterns — do NOT:
 - Use \`::: row\`, raw HTML \`<div>\`, or \`===\` separators as super block substitutes.
 - Confuse Markdown tables with database blocks, or bookmarks (block attributes) with tags (inline markdown).
-- Fake database blocks with Markdown tables when MCP cannot create real \`av\` blocks.
+- Fake database blocks with Markdown tables when a real \`av\` workflow is required.
+- Claim that MCP created a brand-new real \`av\` block from scratch when the current AV tool version does not support that operation.
 
 For the full layout guide with formatting inventory, distinctions, and daily heuristics, read siyuan://help/ai-layout-guide or call any tool with action=”help”.
 
@@ -207,6 +210,7 @@ function getToolsByConfig(config: ToolConfig) {
         ...listNotebookTools(config.notebook),
         ...listDocumentTools(config.document),
         ...listBlockTools(config.block),
+        ...listAvTools(config.av),
         ...listFileTools(config.file),
         ...listSearchTools(config.search),
         ...listTagTools(config.tag),
@@ -297,6 +301,7 @@ export async function createSiYuanServer(): Promise<Server> {
             case 'notebook': result = await callNotebookTool(client, args, config.notebook, permMgr); break;
             case 'document': result = await callDocumentTool(client, args, config.document, permMgr); break;
             case 'block': result = await callBlockTool(client, args, config.block, permMgr); break;
+            case 'av': result = await callAvTool(client, args, config.av, permMgr); break;
             case 'file': result = await callFileTool(client, args, config.file, permMgr); break;
             case 'search': result = await callSearchTool(client, args, config.search, permMgr); break;
             case 'tag': result = await callTagTool(client, args, config.tag, permMgr); break;
