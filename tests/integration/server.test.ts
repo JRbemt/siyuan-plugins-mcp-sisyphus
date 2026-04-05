@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSiYuanServer } from '@/mcp/server';
+import { buildServerInstructions, createSiYuanServer } from '@/mcp/server';
 
 describe('MCP Server Integration', () => {
     let client: Client;
@@ -59,6 +59,34 @@ describe('MCP Server Integration', () => {
     });
 
     describe('Server creation and tool listing', () => {
+        it('elevates user custom rules in server instructions when configured', () => {
+            const userRule = 'After creating a document, proactively set the icon when the user mentions it.';
+            const instructions = buildServerInstructions(userRule);
+
+            expect(instructions).toContain('## User custom rules priority');
+            expect(instructions).toContain('## User custom rules');
+            expect(instructions).toContain('MUST follow these user custom rules');
+            expect(instructions).toContain(userRule);
+            expect(instructions.indexOf('## User custom rules')).toBeLessThan(instructions.indexOf('## Help and progressive disclosure'));
+            expect(instructions).toContain('User custom rules override the general style and workflow suggestions below when they apply.');
+        });
+
+        it('formats multiline user custom rules as a bullet list', () => {
+            const instructions = buildServerInstructions('Rule one\n\nRule two  \n  Rule three');
+
+            expect(instructions).toContain('- Rule one');
+            expect(instructions).toContain('- Rule two');
+            expect(instructions).toContain('- Rule three');
+        });
+
+        it('omits user custom rule sections when no rules are configured', () => {
+            const instructions = buildServerInstructions('');
+
+            expect(instructions).not.toContain('## User custom rules priority');
+            expect(instructions).not.toContain('## User custom rules');
+            expect(instructions).not.toContain('User custom rules override the general style and workflow suggestions below when they apply.');
+        });
+
         it('should list tools with expected names', async () => {
             const { tools } = await client.listTools();
 

@@ -75,6 +75,7 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 
 ## Timeline
 
+- `v0.1.14`: Adds an `ai-layout-guide` help resource, teaches better SiYuan layout semantics for notes, tags, bookmarks, and flashcards, and refreshes smoke coverage for the 8-tool surface
 - `v0.1.13`: Requires standard token-authenticated SiYuan requests, trims trailing slashes from `SIYUAN_API_URL`, and fixes empty-response JSON parse failures
 - `v0.1.12`: Adds the `mascot` aggregated tool, improves Docker/env-based API auth flows, and refreshes docs plus tests for the 8-tool surface
 - `v0.1.11`: Adds document cover actions, switches asset uploads to local-path flows with large-file confirmation, and refreshes docs plus tests

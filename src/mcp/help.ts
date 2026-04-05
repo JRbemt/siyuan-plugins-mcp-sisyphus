@@ -86,7 +86,7 @@ export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     list_tree: 'Use notebook + path, where path is a storage path such as / or /20240318112233-abc123.sy.',
     search_docs: 'Use notebook + query, and optionally path as a storage-path scope. Search is title-based in SiYuan; MCP then filters by notebook permission and optional storage path.',
     get_doc: 'Use a document ID. mode="markdown" returns clean Markdown content and supports page/pageSize for long documents; mode="html" uses the current focus view. For structured reading, prefer get_child_blocks.',
-    create_daily_note: 'Use a notebook ID and optionally pass app for downstream SiYuan event routing.',
+    create_daily_note: 'Use a notebook ID and optionally pass app for downstream SiYuan event routing. When the user asks for a diary, journal entry, daily log, or today’s note in a notebook, prefer this action over manually creating a path and then appending content.',
 };
 
 export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
@@ -181,6 +181,7 @@ export { ACTIONS_BY_CATEGORY } from './config';
 export const TOOL_OVERVIEW_RESOURCE_URI = 'siyuan://help/tool-overview';
 export const DOCUMENT_PATH_RESOURCE_URI = 'siyuan://help/document-path-semantics';
 export const EXAMPLES_RESOURCE_URI = 'siyuan://help/examples';
+export const AI_LAYOUT_GUIDE_RESOURCE_URI = 'siyuan://help/ai-layout-guide';
 export const ACTION_RESOURCE_TEMPLATE_URI = 'siyuan://help/action/{tool}/{action}';
 
 export function getActionHint(tool?: string, action?: string): string | undefined {

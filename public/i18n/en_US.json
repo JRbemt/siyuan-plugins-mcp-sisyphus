@@ -66,7 +66,7 @@
 
     "Files": "Files",
     "Search": "Search",
-    "Tags": "tag",
+    "Tags": "Tags",
     "System": "System",
     "upload_asset": "Upload Asset",
     "render_template": "Render Template",
@@ -255,7 +255,7 @@
     "desc_search_action_get_backlinks": "Get backlinks for a block or document.",
     "search_action_get_backmentions": "Get Backmentions",
     "desc_search_action_get_backmentions": "Get backmentions for a block or document.",
-    "tag_tool_title": "tag Tool",
+    "tag_tool_title": "Tag Tool",
     "tag_tool_desc": "Expose the grouped tag tool to MCP clients.",
     "tag_action_list": "List Tags",
     "desc_tag_action_list": "List tags in the workspace.",
@@ -296,6 +296,10 @@
     "desc_mascot_action_buy": "Buy one item from the mascot shop by item ID.",
 
     "Mascot": "Mascot",
+    "User Rules": "User Rules",
+    "user_rules_title": "User Custom Rules",
+    "user_rules_desc": "Additional instructions appended to the MCP server prompt at startup. Use this for personal preferences like icon behavior, naming, language, or formatting defaults. Avoid secrets and keep it concise.",
+    "user_rules_placeholder": "After creating a document or daily note, proactively set the icon.",
     "puppy_showClickHint_title": "Show Click Hint",
     "puppy_showClickHint_desc": "Show a hint when clicking the mascot that it is provided by the MCP plugin and can be turned off here.",
     "puppy_testMode_title": "Random Mascot Test",

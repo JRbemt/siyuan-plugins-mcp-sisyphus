@@ -54,6 +54,7 @@ export type ToolConfig = {
     tag: CategoryToolConfig<TagAction>;
     system: CategoryToolConfig<SystemAction>;
     mascot: CategoryToolConfig<MascotAction>;
+    userRulesText: string;
 };
 
 export const LEGACY_TOOL_TO_ACTION: Record<string, { category: ToolCategory; action: string }> = {
@@ -193,6 +194,7 @@ export function buildDefaultToolConfig(): ToolConfig {
             enabled: true,
             actions: createActionsRecord(MASCOT_ACTIONS, ['get_balance', 'shop', 'buy']),
         },
+        userRulesText: '创建文档/日记后主动设图标',
     };
 }
 
@@ -288,6 +290,10 @@ function applyLegacyCategoryConfig(config: ToolConfig, raw: Record<string, unkno
 }
 
 function applyNestedConfig(config: ToolConfig, raw: Record<string, unknown>) {
+    if (typeof raw.userRulesText === 'string') {
+        config.userRulesText = raw.userRulesText;
+    }
+
     for (const category of TOOL_CATEGORIES) {
         const categoryValue = raw[category];
         if (!isRecord(categoryValue)) continue;
@@ -310,6 +316,10 @@ function applyNestedConfig(config: ToolConfig, raw: Record<string, unknown>) {
 export function normalizeToolConfig(raw: unknown): ToolConfig {
     const config = buildDefaultToolConfig();
     if (!isRecord(raw)) return config;
+
+    if (typeof raw.userRulesText === 'string') {
+        config.userRulesText = raw.userRulesText;
+    }
 
     const hasNestedConfig = TOOL_CATEGORIES.some(
         cat => isRecord(raw[cat]) && isRecord((raw[cat] as Record<string, unknown>).actions),

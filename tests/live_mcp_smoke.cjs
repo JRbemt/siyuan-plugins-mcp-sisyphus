@@ -164,7 +164,7 @@ async function assertPermissionDenied(client, name, args) {
 async function assertDefaultToolList() {
     await withConfigMode('default', async () => withClient(async (client) => {
         const tools = (await client.listTools()).tools;
-        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system']);
+        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'file', 'search', 'tag', 'system', 'mascot']);
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
         assert.match(descriptions.notebook, /Common actions: list, create, open, close, rename, get_conf, get_child_docs/);
@@ -185,7 +185,6 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /Common actions: .*get_children/);
         assert.match(descriptions.block, /Additional actions: .*move/);
         assert.match(descriptions.block, /Read siyuan:\/\/help\/action\/block\/\{action\} for details/);
-        assert.match(descriptions.block, /custom-riff-decks/);
         assert.match(descriptions.file, /Common actions: upload_asset, export_md/);
         assert.match(descriptions.file, /Additional actions: render_template, render_sprig, export_resources/);
         assert.match(descriptions.file, /confirmLargeFile/);
@@ -226,6 +225,7 @@ async function assertDefaultToolList() {
             'siyuan://help/tool-overview',
             'siyuan://help/document-path-semantics',
             'siyuan://help/examples',
+            'siyuan://help/ai-layout-guide',
         ]);
 
         const resourceTemplates = (await client.listResourceTemplates()).resourceTemplates;
@@ -236,9 +236,10 @@ async function assertDefaultToolList() {
         const toolOverviewText = await readResourceText(client, 'siyuan://help/tool-overview');
         assert.match(toolOverviewText, /SiYuan MCP Tool Overview/);
         assert.match(toolOverviewText, /document\(action="move"\)/);
-        assert.match(toolOverviewText, /7 aggregated tools/);
+        assert.match(toolOverviewText, /8 aggregated tools/);
         assert.match(toolOverviewText, /#标签#/);
         assert.match(toolOverviewText, /custom-riff-decks/);
+        assert.match(toolOverviewText, /ai-layout-guide/);
 
         const documentPathText = await readResourceText(client, 'siyuan://help/document-path-semantics');
         assert.match(documentPathText, /Human-readable path/);
@@ -249,6 +250,58 @@ async function assertDefaultToolList() {
         assert.match(examplesText, /Mark a flashcard with block attributes/);
         assert.match(examplesText, /custom-riff-decks/);
 
+        const aiLayoutGuideText = await readResourceText(client, 'siyuan://help/ai-layout-guide');
+        assert.match(aiLayoutGuideText, /Callouts come from Markdown like `> \[!TIP\]`/);
+        assert.match(aiLayoutGuideText, /Common callout markers are `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, and `CAUTION`/);
+        assert.match(aiLayoutGuideText, /Super block layout is defined by Kramdown/);
+        assert.match(aiLayoutGuideText, /Do not use `::: row`, HTML `<div>`, or `===`/);
+        assert.match(aiLayoutGuideText, /outer `\{\{\{col` and put one child `\{\{\{row` block per column/);
+        assert.match(aiLayoutGuideText, /There is no separator-based super block syntax/);
+        assert.match(aiLayoutGuideText, /`===` inside a super block is not a column delimiter/);
+        assert.match(aiLayoutGuideText, /Inline `<span style="color: \.\.\.">` is not the preferred color-marking pattern/);
+        assert.match(aiLayoutGuideText, /`\*\*文字\*\*\{:\sstyle="color: var\(--b3-font-color1\);"\}`/);
+        assert.match(aiLayoutGuideText, /`<sup>备注<\/sup>`/);
+        assert.match(aiLayoutGuideText, /`kbd`/);
+        assert.match(aiLayoutGuideText, /inline math/);
+        assert.match(aiLayoutGuideText, /IAL-based color\/effect spans/);
+        assert.match(aiLayoutGuideText, /Database blocks are `type = "av"`/);
+        assert.match(aiLayoutGuideText, /Tags belong in block markdown as `#标签#`/);
+        assert.match(aiLayoutGuideText, /hierarchical tags use forms such as `#项目\/阶段#`/);
+        assert.match(aiLayoutGuideText, /gitGraph/);
+        assert.match(aiLayoutGuideText, /flowchart/);
+        assert.match(aiLayoutGuideText, /plantuml/);
+        assert.match(aiLayoutGuideText, /graphviz/);
+        assert.match(aiLayoutGuideText, /echarts/);
+        assert.match(aiLayoutGuideText, /abc/);
+        assert.match(aiLayoutGuideText, /NodeAttributeView/);
+        assert.match(aiLayoutGuideText, /Databases support records, multiple views, filters, sorts, relations, and rollups/);
+        assert.match(aiLayoutGuideText, /Bookmarks are block attributes, not inline tags/);
+        assert.match(aiLayoutGuideText, /Bookmarks are for collecting existing blocks/);
+        assert.match(aiLayoutGuideText, /Avoid special-symbol-heavy bookmark or tag names/);
+        assert.match(aiLayoutGuideText, /marked text `==答案==` as a cloze answer/);
+        assert.match(aiLayoutGuideText, /a super block with the first child as the question/);
+        assert.match(aiLayoutGuideText, /`\/AI 编写`/);
+        assert.match(aiLayoutGuideText, /related text may be sent to an external model service/);
+        assert.match(aiLayoutGuideText, /Flashcards are not a layout type; they are review semantics attached to blocks/);
+        assert.match(aiLayoutGuideText, /A blockquote is not a block reference/);
+        assert.match(aiLayoutGuideText, /A query embed is not a static block list or an ordinary reference/);
+        assert.match(aiLayoutGuideText, /`===` is not a super block column delimiter/);
+        assert.match(aiLayoutGuideText, /\{\{\{col/);
+        assert.match(aiLayoutGuideText, /exclude the current root document/);
+        assert.match(aiLayoutGuideText, /root_id != "<current-doc-id>"/);
+        assert.match(aiLayoutGuideText, /do not fake completion with a Markdown table or a borrowed `NodeAttributeView` container/);
+        assert.match(aiLayoutGuideText, /Choose the renderer language by diagram intent/);
+        assert.match(aiLayoutGuideText, /`sequenceDiagram` for interactions/);
+        assert.match(aiLayoutGuideText, /`gitGraph` for commit history/);
+        assert.match(aiLayoutGuideText, /When the user asks for a diary entry, journal, daily log, or today’s note in a notebook, prefer `document\(action="create_daily_note"\)`/);
+        assert.match(aiLayoutGuideText, /When the user wants comparison, side-by-side information, cards, dashboards, pros\/cons, or parallel summaries, actively consider super blocks/);
+        assert.match(aiLayoutGuideText, /When the user wants reminders, warnings, key conclusions, tips, or highlighted takeaways, actively consider callouts/);
+        assert.match(aiLayoutGuideText, /When the user wants lightweight field display, use Markdown tables; when the user wants structured records, multiple views, filters, relations, or rollups, use database blocks instead/);
+        assert.match(aiLayoutGuideText, /When the user wants collect, favorite, or save-for-later semantics on an existing block, actively consider the `bookmark` attribute/);
+        assert.match(aiLayoutGuideText, /When the user wants review, memorization, Q&A, or cloze-style learning, actively consider flashcard semantics, but keep flashcards separate from layout choice/);
+        assert.match(aiLayoutGuideText, /Daily note or diary: use `document\(action="create_daily_note"\)`/);
+        assert.match(aiLayoutGuideText, /Meeting notes: headings for agenda, lists for points, task lists for follow-ups, and callouts for decisions or risks/);
+
         const actionHelpText = await readResourceText(client, 'siyuan://help/action/document/move');
         assert.match(actionHelpText, /document\(action="move"\)/);
         assert.match(actionHelpText, /fromIDs \+ toID/);
@@ -258,6 +311,9 @@ async function assertDefaultToolList() {
         const blockSetAttrsHelpText = await readResourceText(client, 'siyuan://help/action/block/set_attrs');
         assert.match(blockSetAttrsHelpText, /custom-riff-decks/);
         assert.match(blockSetAttrsHelpText, /flashcard/i);
+
+        const createDailyNoteHelpText = await readResourceText(client, 'siyuan://help/action/document/create_daily_note');
+        assert.match(createDailyNoteHelpText, /prefer this action over manually creating a path and then appending content/);
 
         const validationError = (await callToolJson(client, 'document', {
             action: 'rename',

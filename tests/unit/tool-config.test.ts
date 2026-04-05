@@ -13,6 +13,7 @@ describe('setting tool config', () => {
         expect(config.mascot.actions.get_balance).toBe(true);
         expect(config.mascot.actions.shop).toBe(true);
         expect(config.mascot.actions.buy).toBe(true);
+        expect(config.userRulesText).toBe('创建文档/日记后主动设图标');
     });
 
     it('keeps nested file config action toggles and upload threshold together', () => {
@@ -68,5 +69,28 @@ describe('setting tool config', () => {
         });
 
         expect(config.file.uploadLargeFileThresholdMB).toBe(expected);
+    });
+
+    it('keeps userRulesText in nested config and defaults it for old config', () => {
+        const configWithRules = normalizeToolConfig({
+            userRulesText: 'Always prefer setting icons after create.',
+            document: {
+                enabled: true,
+                actions: {
+                    create: true,
+                },
+            },
+        });
+        const configWithoutRules = normalizeToolConfig({
+            document: {
+                enabled: true,
+                actions: {
+                    create: true,
+                },
+            },
+        });
+
+        expect(configWithRules.userRulesText).toBe('Always prefer setting icons after create.');
+        expect(configWithoutRules.userRulesText).toBe('创建文档/日记后主动设图标');
     });
 });

@@ -269,7 +269,7 @@ function buildTieredDescription<Action extends string>(
     }
 
     if (advancedActions.length > 0) {
-        parts.push(`Additional actions: ${advancedActions.join(', ')}. Read siyuan://help/action/${category}/{action} for details.`);
+        parts.push(`Additional actions: ${advancedActions.join(', ')}. Read siyuan://help/action/${category}/{action} for details, or call action="help" if resources are unavailable.`);
     }
 
     const guidance = buildEssentialGuidance(category, enabledActions, options);
@@ -277,7 +277,7 @@ function buildTieredDescription<Action extends string>(
         parts.push(guidance.join(' '));
     }
 
-    return parts.join(' ');
+    return parts.join('\n\n');
 }
 
 export function buildAggregatedTool<Action extends string>(
@@ -307,8 +307,8 @@ export function buildAggregatedTool<Action extends string>(
             properties: {
                 action: {
                     type: 'string',
-                    enum: enabledActions,
-                    description: `Action to perform. Supported values: ${enabledActions.join(', ')}.${confirmationActions.length > 0 ? ` User confirmation is required before calling: ${confirmationActions.join(', ')}.` : ''}`,
+                    enum: [...enabledActions, 'help'],
+                    description: `Action to perform. Supported values: ${enabledActions.join(', ')}. Use action="help" for usage guidance.${confirmationActions.length > 0 ? ` User confirmation is required before calling: ${confirmationActions.join(', ')}.` : ''}`,
                 },
                 ...mergePropertySchemas(enabledVariants, options.propertyDescriptionOverrides),
             },
@@ -334,12 +334,24 @@ export function tryHandleHelpAction<Action extends string>(
         tierGroups[getActionTier(category, action)].push(action);
     }
 
-    const actionDetails: Record<string, { requiredFields: string; hint?: string }> = {};
+    const actionDetails: Record<string, { requiredFields: string; hint?: string; example?: Record<string, unknown> }> = {};
+    const seen = new Set<string>();
     for (const variant of enabledVariants) {
+        if (seen.has(variant.action)) continue;
+        seen.add(variant.action);
         const fields = getSchemaRequired(variant.schema).filter((f) => f !== 'action');
+        const example: Record<string, unknown> = { action: variant.action };
+        const properties = getSchemaProperties(variant.schema);
+        for (const field of fields) {
+            const prop = properties[field];
+            example[field] = prop && typeof prop === 'object' && 'type' in (prop as JsonSchema)
+                ? `<${field}>`
+                : `<${field}>`;
+        }
         actionDetails[variant.action] = {
             requiredFields: fields.length > 0 ? fields.join(', ') : 'none',
             hint: TOOL_ACTION_HINTS[category]?.[variant.action],
+            ...(fields.length > 0 ? { example } : {}),
         };
     }
 
@@ -351,6 +363,12 @@ export function tryHandleHelpAction<Action extends string>(
         advancedActions: tierGroups.advanced,
         actions: actionDetails,
         guidance,
+        helpResources: [
+            `siyuan://help/action/${category}/{action}`,
+            'siyuan://help/tool-overview',
+            'siyuan://help/examples',
+            'siyuan://help/ai-layout-guide',
+        ],
     });
 }
 

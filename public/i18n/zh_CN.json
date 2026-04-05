@@ -66,7 +66,7 @@
 
     "Files": "文件",
     "Search": "搜索",
-    "Tags": "tag",
+    "Tags": "标签工具",
     "System": "系统",
     "upload_asset": "上传资源",
     "render_template": "渲染模板",
@@ -269,7 +269,7 @@
     "search_action_get_backmentions": "获取反向提及",
     "desc_search_action_get_backmentions": "获取块或文档的反向提及。",
 
-    "tag_tool_title": "tag Tool",
+    "tag_tool_title": "标签工具",
     "tag_tool_desc": "向 MCP 客户端暴露聚合后的标签工具。",
     "tag_action_list": "列出标签",
     "desc_tag_action_list": "列出工作区中的标签。",
@@ -314,6 +314,10 @@
     "desc_notebook_action_set_icon": "设置笔记本的图标。",
 
     "Mascot": "猫猫",
+    "User Rules": "用户规则",
+    "user_rules_title": "用户自定义规则",
+    "user_rules_desc": "这些附加说明会在 MCP 启动时追加到系统提示中。适合填写图标偏好、命名偏好、语言偏好或排版默认规则。请避免填写敏感信息，并尽量保持简洁。",
+    "user_rules_placeholder": "创建文档/日记后主动设图标",
     "puppy_showClickHint_title": "显示点击提示",
     "puppy_showClickHint_desc": "点击猫猫时显示提示，说明这是 MCP 插件提供的猫猫，并且可以在这里关闭。",
     "puppy_testMode_title": "随机猫猫测试",

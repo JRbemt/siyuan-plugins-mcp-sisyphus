@@ -168,11 +168,13 @@
         },
     ];
 
+    const USER_RULES_GROUP_KEY = "User Rules";
+    const USER_RULES_GROUP_LABEL = "User Rules";
     const PUPPY_GROUP_KEY = "Mascot";
     const PUPPY_GROUP_LABEL = "🐾 Mascot";
     const PERM_GROUP_KEY = "Permissions";
     const PERM_GROUP_LABEL = "🔒 Permissions";
-    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`), PUPPY_GROUP_LABEL];
+    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.map((group) => `${group.icon} ${group.groupKey}`), PUPPY_GROUP_LABEL, USER_RULES_GROUP_LABEL];
 
     let config: ToolConfig = buildDefaultToolConfig();
     let groups = defaultGroups;
@@ -188,6 +190,7 @@
     let searchItems: ISettingItem[] = [];
     let tagItems: ISettingItem[] = [];
     let systemItems: ISettingItem[] = [];
+    let userRulesItems: ISettingItem[] = [];
     // Permissions tab state
     interface NotebookInfo { id: string; name: string; }
     let notebooks: NotebookInfo[] = [];
@@ -323,6 +326,20 @@
         ];
     }
 
+    function buildUserRulesItems(): ISettingItem[] {
+        return [
+            {
+                type: "textarea",
+                key: "userRulesText",
+                value: config.userRulesText,
+                title: getLabel("user_rules_title", "User Custom Rules"),
+                description: getLabel("user_rules_desc", "Additional instructions appended to the MCP server prompt at startup. Use this for personal preferences like icon behavior, naming, language, or formatting defaults. Avoid secrets and keep it concise."),
+                placeholder: getLabel("user_rules_placeholder", "创建文档/日记后主动设图标"),
+                inputStyle: "min-height: 12em; white-space: pre-wrap;",
+            },
+        ];
+    }
+
     function refreshItems() {
         puppyItems = buildPuppyItems();
         notebookItems = [buildToolToggleItem(GROUP_DEFINITIONS[0]), ...buildActionItems(GROUP_DEFINITIONS[0])];
@@ -332,12 +349,14 @@
         searchItems = [buildToolToggleItem(GROUP_DEFINITIONS[4]), ...buildActionItems(GROUP_DEFINITIONS[4])];
         tagItems = [buildToolToggleItem(GROUP_DEFINITIONS[5]), ...buildActionItems(GROUP_DEFINITIONS[5])];
         systemItems = [buildToolToggleItem(GROUP_DEFINITIONS[6]), ...buildActionItems(GROUP_DEFINITIONS[6])];
+        userRulesItems = buildUserRulesItems();
         permItems = buildPermItems();
     }
 
+    $: userRulesGroupLabel = `🧭 ${getLabel(USER_RULES_GROUP_KEY, USER_RULES_GROUP_LABEL)}`;
     $: puppyGroupLabel = `🐾 ${getLabel(PUPPY_GROUP_KEY, PUPPY_GROUP_LABEL)}`;
     $: permGroupLabel = `🔒 ${getLabel(PERM_GROUP_KEY, PERM_GROUP_LABEL)}`;
-    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.slice(0, 7).map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), puppyGroupLabel];
+    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.slice(0, 7).map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), puppyGroupLabel, userRulesGroupLabel];
     $: if (!groups.includes(focusGroup)) {
         focusGroup = groups[0];
     }
@@ -498,6 +517,15 @@
             return;
         }
 
+        if (key === "userRulesText") {
+            config = {
+                ...config,
+                userRulesText: typeof value === "string" ? value : String(value ?? ""),
+            };
+            await persistConfig();
+            return;
+        }
+
         const [category, , action] = key.split("__");
         if (category && action) {
             setActionEnabled(category as ToolCategory, action, Boolean(value));
@@ -546,6 +574,7 @@
         <SettingPanel group={groups[6]} settingItems={tagItems} display={focusGroup === groups[6]} on:changed={onChanged} />
         <SettingPanel group={groups[7]} settingItems={systemItems} display={focusGroup === groups[7]} on:changed={onChanged} />
         <SettingPanel group={puppyGroupLabel} settingItems={puppyItems} display={focusGroup === puppyGroupLabel} on:changed={onChanged} />
+        <SettingPanel group={userRulesGroupLabel} settingItems={userRulesItems} display={focusGroup === userRulesGroupLabel} on:changed={onChanged} />
     </div>
 </div>
 
