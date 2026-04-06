@@ -1,19 +1,21 @@
 # SiYuan MCP 接口 AI 测试手册
 
-这是一份**给 AI 执行**的接口测试手册。  
+这是一份**给 AI 执行**的接口测试手册。
 
-请调用 siyuan-mcp-sisyphus 进行测试。
+请调用 `siyuan-mcp-sisyphus` 进行测试。
 
-目标是让 AI 在尽量少猜测的前提下，对当前 MCP 暴露的 `notebook` / `document` / `block` / `file` / `search` / `tag` / `system` 七类工具进行**系统化回归测试**，重点覆盖：
+目标是让 AI 在尽量少猜测的前提下，对当前 MCP 暴露的 `notebook` / `document` / `block` / `av` / `file` / `search` / `tag` / `system` / `mascot` 九类工具进行**系统化全量回归测试**，重点覆盖：
 
 - 聚合工具是否正确暴露
 - 文档路径语义是否正确
 - 树形查询是否正确
 - 权限拦截是否有效
+- 数据库（AV）读写链路是否正常
 - 常见读写操作是否正常
 - 搜索与查询功能是否正常
 - 标签工具是否正常
 - 系统工具是否正常
+- `mascot` 余额 / 商店 / 购买链路是否正常
 
 ---
 
@@ -27,6 +29,11 @@
 - `block` 工具基于块 / 文档 ID 的权限校验
 - `document.get_path` / `document.get_hpath(id=...)` 的读权限校验
 - `document.move` 的来源与目标权限校验
+- `av` 工具对真实数据库的读取、列操作、行绑定、单元格写入、复制与主键读取
+- `search` 工具的全文搜索、SQL、标签搜索、反向链接 / 提及
+- `tag` 工具对标签列表、改名、删除的聚合封装
+- `system` 工具对系统信息、配置、消息与帮助的聚合封装
+- `mascot` 工具对余额、商店与购买的聚合封装
 
 ---
 
@@ -49,11 +56,32 @@ AI 在执行本手册时，必须遵守以下规则：
 5. 如果某个 action 没有暴露出来：
    - 记录为 `BLOCKED`
    - 不要伪造结果
-6. 所有高风险删除 / 移动动作，只允许针对**测试过程中创建的对象**执行。
+6. 高风险删除 / 移动动作，只允许针对**测试过程中创建的对象**执行。
 7. 测试结束后必须做清理：
    - 删除测试文档
    - 删除测试笔记本
    - 恢复测试过程中修改过的权限
+   - 清理 `av` 测试中新加的行 / 列（如果这些对象确实由测试创建）
+
+### 2.1 AV 特别规则
+
+由于当前 MCP **不能从零创建真实 AV 数据库块**，AI 必须遵守：
+
+1. AI 不得用 Markdown 表格冒充真实 AV。
+2. AI 不得声称自己“新建了一个真实数据库”。
+3. 如需执行 `av` 写测试，必须由用户事先在 SiYuan 中创建一个真实数据库并把 `providedAvID` 提供给 AI。
+4. 如果用户没有提供可访问的真实 AV，则所有依赖该 AV 的写测试统一标记为 `BLOCKED`。
+5. `av` 的破坏性修改只允许落在：
+   - 用户明确授权用于测试的现有 AV
+   - 或该 AV 中由本轮测试新加的列 / 新绑的行
+6. 如果 `add_rows` 无法返回或无法推导出真实 **row item ID**，后续 `set_cell` / `batch_set_cells` 必须记为 `FAIL` 或 `BLOCKED`，不得猜测 `rowID`。
+
+### 2.2 状态定义
+
+- `PASS`：已执行且结果符合预期
+- `FAIL`：已执行但结果不符合预期
+- `BLOCKED`：因环境、权限、前置资源或未暴露 action 无法执行
+- `MISS`：本轮没有覆盖到该 action，仅用于最终覆盖矩阵，不得在执行过程中替代 `BLOCKED`
 
 ---
 
@@ -61,8 +89,8 @@ AI 在执行本手册时，必须遵守以下规则：
 
 只有同时满足以下条件，才能判定本轮测试通过：
 
-1. `listTools()` 中能看到预期 action
-2. 树形查询结果符合”**只返回直属子项**”的约定
+1. `listTools()` 中能看到预期 tool 与 action
+2. 树形查询结果符合“**只返回直属子项**”的约定
 3. 路径相关接口符合：
    - `create.path` 使用人类可读路径
    - `get_path` 返回存储路径
@@ -70,30 +98,38 @@ AI 在执行本手册时，必须遵守以下规则：
 4. 权限测试中，被禁止的调用必须返回 `permission_denied`
 5. 权限恢复后，读写操作恢复正常
 6. 搜索功能正常：全文搜索、SQL 查询、标签搜索、反向链接均可用
-7. SQL 安全守卫有效：非 SELECT 语句被拒绝
-8. 清理完成，无遗留测试对象
+7. SQL 安全守卫有效：非 `SELECT` / `WITH` 语句被拒绝
+8. 在用户已提供真实 AV 的前提下，`av` 至少完成一轮：
+   - 读库
+   - 加列
+   - 绑行
+   - 写单元格
+   - 清理测试行 / 测试列
+9. `mascot.get_balance` 与 `mascot.shop` 正常；若余额足够则 `buy` 也应可验证
+10. 清理完成，无遗留测试对象
 
 ---
 
 ## 4. 执行前检查
 
-AI 先执行以下检查：
-
 ### 4.1 工具可见性检查
 
-确认存在以下 7 个聚合工具：
+确认存在以下 9 个聚合工具：
 
 - `notebook`
 - `document`
 - `block`
+- `av`
 - `file`
 - `search`
 - `tag`
 - `system`
+- `mascot`
 
 说明：
 
-- `system(action="workspace_info")` 默认应为关闭状态，且需要在测试报告中标记为高风险 action。
+- `system(action="workspace_info")` 默认应为关闭状态时，需要在报告中标记为高风险 action。
+- 若默认不可见但手动启用后可用，记为符合预期。
 
 ### 4.2 关键 action 检查
 
@@ -167,6 +203,19 @@ AI 先执行以下检查：
 - `rename`
 - `remove`
 
+#### av
+
+- `get`
+- `search`
+- `add_rows`
+- `remove_rows`
+- `add_column`
+- `remove_column`
+- `set_cell`
+- `batch_set_cells`
+- `duplicate_block`
+- `get_primary_key_values`
+
 #### system
 
 - `workspace_info`
@@ -188,14 +237,17 @@ AI 先执行以下检查：
 - `get_backlinks`
 - `get_backmentions`
 
+#### mascot
+
+- `get_balance`
+- `shop`
+- `buy`
+
 如果缺少任一关键 action，记录 `BLOCKED` 并在最终报告里指出。
-对于 `workspace_info`，若默认配置中不可见但手动启用后可用，记为符合预期。
 
-### 4.3 七类 tool 权限预热
+### 4.3 九类 tool 权限预热
 
-为了避免 AI 在测试进行到一半时，首次调用某个 tool 才弹出权限确认而卡住，需要在**测试刚开始阶段**主动把 7 个聚合 tool 都至少调用一次。
-
-这一步按两阶段执行，避免使用“任意现有对象”造成歧义：
+为了避免 AI 在测试进行到一半时，首次调用某个 tool 才弹出权限确认而卡住，需要在**测试刚开始阶段**主动把 9 个聚合 tool 都至少调用一次。
 
 #### 阶段 A：创建测试对象前先预热能直接调用的 tool
 
@@ -203,6 +255,7 @@ AI 先执行以下检查：
 2. `system(action="get_version")`
 3. `search(action="search_tag", k="test")`
 4. `tag(action="list")`
+5. `mascot(action="get_balance")`
 
 #### 阶段 B：创建最小测试对象后再预热依赖对象 ID 的 tool
 
@@ -216,13 +269,18 @@ AI 先执行以下检查：
 3. `document(action="get_path", id=sourceDocId)`
 4. `block(action="get_children", id=sourceDocId)`
 5. `file(action="render_sprig", template="warmup")`
+6. 如果用户已提供 `providedAvID`，执行：
+   - `av(action="get", id=providedAvID)`
+   否则执行：
+   - `av(action="search", keyword="test")`
 
 #### 说明
 
-- 这一步的目标是**提前触发 7 个 tool 的权限请求**，不是验证业务功能。
+- 这一步的目标是**提前触发 9 个 tool 的权限请求**，不是验证业务功能。
 - `document` 与 `block` 的预热**不要**依赖用户已有对象，统一使用测试过程中刚创建的 `sourceDocId`。
+- `av` 预热优先使用用户提供的 `providedAvID`；如果还没有该信息，只允许做安全的只读探测。
 - 这些预热调用本身也要记录进测试日志，但不单独计入正式用例结果。
-- 只有在七个 tool 都至少被调用过一次之后，才进入正式测试步骤。
+- 只有在九个 tool 都至少被调用过一次之后，才进入正式测试步骤。
 
 ---
 
@@ -276,6 +334,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 - 一个标题块：`# Source`
 - 一个普通段落：`seed`
+- 一个唯一词：`ai-interface-needle-<timestamp>`
 - 一个唯一标签：`#ai-interface-test-<timestamp>#`
 - 一个引用源块与一个引用目标块（供 `transfer_ref` / backlink 测试）
 
@@ -285,17 +344,39 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `refSourceBlockId`
 - `refTargetBlockId`
 
+### 5.4 AV 测试辅助块
+
+如果用户已提供 `providedAvID`，AI 还需要在 `SourceDoc` 中再准备 2 个普通段落块，供 `av.add_rows` 绑定为数据库行，例如：
+
+- `av row seed 1`
+- `av row seed 2`
+
+保存返回的：
+
+- `avRowBlockId1`
+- `avRowBlockId2`
+
+### 5.5 路径与顺序语义约定
+
+后续测试统一以以下约定为准：
+
+- `document.create.path` 使用**人类可读路径**，如 `/SourceDoc`
+- `document.get_path` 返回**存储路径**，如 `/xxxxxxxxxxxxxx-xxxxxxx.sy`
+- `document.get_hpath` 返回**层级路径**，如 `/SourceDoc`
+- `notebook.get_child_docs` 与 `document.get_child_docs` 都只返回**直属子文档**
+- `document.get_child_blocks` 与 `block.get_children(docId)` 都只返回**直属子块**
+
 ---
 
-## 6. 详细测试步骤
+## 6. 主流程回归测试
 
----
+这一组用例构成顺序执行的主流程。若后续补充覆盖章节需要复用结果，应直接引用本章节步骤号。
 
 ### T01 - notebook 基础读能力
 
 #### 目标
 
-验证 notebook 基本接口可用。
+验证 `notebook` 基本接口可用。
 
 #### 步骤
 
@@ -317,7 +398,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 目标
 
-验证 notebook 权限接口存在、支持全量/单笔记本两种查询，并返回正确格式。
+验证 `notebook.get_permissions` 支持全量 / 单笔记本两种查询，并返回正确格式。
 
 #### 步骤
 
@@ -341,8 +422,8 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
   - `rw`
   - `rwd`
 - 第 4 步返回结构化错误，且错误信息明确说明 notebook 不存在
-- 若仍然无论传什么都只返回全量列表，记录为 `FAIL`
-- 若返回旧三态值 `readonly` / `write`，判定为 `FAIL`
+- 若无论传什么都只返回全量列表，记录为 `FAIL`
+- 若返回旧三态值 `readonly` / `write`，记录为 `FAIL`
 
 ---
 
@@ -350,7 +431,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 目标
 
-验证 `notebook(action="get_child_docs")` 只返回测试笔记本根下直属文档。
+验证 `notebook.get_child_docs` 只返回测试笔记本根下直属文档。
 
 #### 步骤
 
@@ -372,12 +453,8 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
   - `targetDocId`
   - `pathMoveDocId`
   - `deleteDocId`
-- **不包含**：
+- 不包含：
   - `childDocId`
-
-说明：
-
-- `ChildDoc` 是 `TargetDoc` 的子文档，不应出现在 notebook 根级直属列表里。
 
 ---
 
@@ -549,7 +626,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 目标
 
-验证 `document(action="get_child_docs")` 只返回直属子文档。
+验证 `document.get_child_docs` 只返回直属子文档。
 
 #### 步骤
 
@@ -660,7 +737,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 目标
 
-验证 `document(action="get_child_blocks")` 与 `block.get_children(docId)` 一致。
+验证 `document.get_child_blocks` 与 `block.get_children(docId)` 一致。
 
 #### 步骤
 
@@ -805,7 +882,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 目标
 
-验证 `block(action="get_kramdown")` 能读出更新后的内容。
+验证 `block.get_kramdown` 能读出更新后的内容。
 
 #### 步骤
 
@@ -826,11 +903,11 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T17 - file 基础接口
+### T17 - file 与 system 基础接口
 
 #### 目标
 
-验证基础 file 接口正常。
+验证基础 `file` 与 `system` 接口正常。
 
 #### 步骤
 
@@ -850,7 +927,60 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T18 - 文档移动：ID 形态
+### T18 - mascot 基础能力
+
+#### 目标
+
+验证 `mascot` 聚合工具已暴露，且余额 / 商店链路可用。
+
+#### 步骤
+
+1. `mascot(action="get_balance")`
+2. `mascot(action="shop")`
+
+保存：
+
+- `mascotBalanceBefore`
+- `mascotLifetimeEarnedBefore`
+- `mascotShopItems`
+- 若商店非空，记录一个最低价格商品的 `cheapestMascotItemId`
+
+#### 预期
+
+- `get_balance` 返回结构化余额信息
+- `shop` 返回商品数组
+- 商品项至少包含：
+  - `item_id`
+  - `label`
+  - `cost`
+
+---
+
+### T19 - mascot 购买链路
+
+#### 目标
+
+在余额允许时验证 `mascot.buy`。
+
+#### 步骤
+
+1. 如果 `mascotShopItems` 为空，记录 `BLOCKED`
+2. 如果 `mascotBalanceBefore < cheapest item cost`，记录 `BLOCKED`
+3. 否则执行：
+   - `mascot(action="buy", item_id=cheapestMascotItemId)`
+4. 再次调用：
+   - `mascot(action="get_balance")`
+
+#### 预期
+
+- 若余额不足：本用例记为 `BLOCKED`，并明确说明是余额限制，不是接口失败
+- 若执行购买：
+  - `buy` 返回结构化成功结果
+  - 第二次 `get_balance` 的余额应减少，或返回值能明确表达购买已生效
+
+---
+
+### T20 - 文档移动：ID 形态
 
 #### 目标
 
@@ -870,22 +1000,12 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 预期
 
-返回成功。
-
-随后可再次用：
-
-```json
-{
-  "action": "get_path",
-  "id": "<deleteDocId>"
-}
-```
-
-确认其路径已进入 `TargetDoc` 目录下。
+- 返回成功
+- 随后再次用 `document.get_path(id=deleteDocId)`，确认其路径已进入 `TargetDoc` 目录下
 
 ---
 
-### T19 - 文档移动：路径形态
+### T21 - 文档移动：路径形态
 
 #### 目标
 
@@ -926,9 +1046,24 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 这一部分是本次改动的重点，必须执行。
 
----
+### 7.1 权限错误结构统一要求
 
-### T20 - `r` 权限下允许读、禁止写删
+所有权限拒绝都应返回结构化错误，至少满足：
+
+```json
+{
+  "error": {
+    "type": "permission_denied",
+    "notebook": "<testNotebookId>",
+    "current_permission": "<当前权限>",
+    "required_permission": "<read|write|delete>"
+  }
+}
+```
+
+允许 `message` 文本有细微差异，但 `type`、`current_permission`、`required_permission` 必须正确。
+
+### T22 - `r` 权限下允许读、禁止写删
 
 #### 目标
 
@@ -950,7 +1085,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
-先尝试以下允许的读操作：
+读操作示例：
 
 1. `notebook.get_conf`
 2. `notebook.get_child_docs`
@@ -962,7 +1097,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 8. `block.get_kramdown(id=sourceDocId)`
 9. `block.get_attrs(id=appendBlockId)`
 
-随后分别尝试以下应被拒绝的写操作（都只针对测试对象）：
+写操作示例：
 
 10. `document.create`
 11. `document.rename(id=sourceDocId, ...)`
@@ -973,44 +1108,21 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 16. `block.fold(id=appendBlockId)`
 17. `block.unfold(id=appendBlockId)`
 
-然后分别尝试以下删除操作：
+删除操作示例：
 
 18. `document.remove(id=deleteDocId)`
 19. `block.delete(id=appendBlockId)`
-20. `notebook.remove(notebook=testNotebookId)`  
-    说明：如果要避免影响主测试流程，这一项可以放到最后单独执行，或仅验证返回的权限错误而不要真的删除测试笔记本。
+20. `notebook.remove(notebook=testNotebookId)`
 
 #### 预期
 
-- 上述读操作都应成功
-- 上述写操作都应失败，并返回结构：
-
-```json
-{
-  "error": {
-    "type": "permission_denied",
-    "notebook": "<testNotebookId>",
-    "current_permission": "r",
-    "required_permission": "write"
-  }
-}
-```
-
-允许 `message` 文本有细微差异，但以下字段必须符合：
-
-- `type = permission_denied`
-- `current_permission = r`
-- `required_permission = write`
-
-上述删除操作也都应失败，但字段应为：
-
-- `type = permission_denied`
-- `current_permission = r`
-- `required_permission = delete`
+- 读操作都应成功
+- 写操作都应失败，且 `required_permission = write`
+- 删除操作都应失败，且 `required_permission = delete`
 
 ---
 
-### T21 - `rw` 权限下允许读写、禁止删除
+### T23 - `rw` 权限下允许读写、禁止删除
 
 #### 目标
 
@@ -1032,66 +1144,23 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
-然后尝试以下允许的读操作：
-
-1. `notebook.get_conf`
-2. `notebook.get_child_docs`
-3. `document.get_path(id=sourceDocId)`
-4. `document.get_hpath(id=sourceDocId)`
-5. `document.get_child_docs(id=targetDocId)`
-6. `document.get_child_blocks(id=sourceDocId)`
-7. `block.get_children(id=sourceDocId)`
-8. `block.get_kramdown(id=sourceDocId)`
-9. `block.get_attrs(id=appendBlockId)`
-
-再尝试以下允许的普通写操作：
-
-10. `document.create`
-11. `document.rename(id=sourceDocId, ...)`
-12. `document.move(fromIDs=[pathMoveDocId], toID=targetDocId)`
-13. `block.append(parentID=sourceDocId, ...)`
-14. `block.update(id=appendBlockId, ...)`
-15. `block.move(id=insertBlockId, ...)`
-16. `block.fold(id=appendBlockId)`
-17. `block.unfold(id=appendBlockId)`
-
-最后尝试以下应被拒绝的删除操作：
-
-18. `document.remove(id=deleteDocId)`
-19. `block.delete(id=appendBlockId)`
-20. `notebook.remove(notebook=testNotebookId)`  
-    说明：同样建议放到最后或只验证权限错误返回，不要破坏后续流程。
+复用 T22 中相同的一组读 / 写 / 删除动作进行验证。
 
 #### 预期
 
-- 上述读操作都应成功
-- 上述普通写操作都应成功
-- 上述删除操作都应失败，并返回：
-
-```json
-{
-  "error": {
-    "type": "permission_denied",
-    "notebook": "<testNotebookId>",
-    "current_permission": "rw",
-    "required_permission": "delete"
-  }
-}
-```
-
-关键字段要求：
-
-- `type = permission_denied`
-- `current_permission = rw`
-- `required_permission = delete`
+- 读操作都应成功
+- 普通写操作都应成功
+- 删除操作都应失败，且：
+  - `current_permission = rw`
+  - `required_permission = delete`
 
 ---
 
-### T22 - `none` 权限下禁止读写删
+### T24 - `none` 权限下禁止读写删
 
 #### 目标
 
-验证测试笔记本设为 `none` 后，读写操作都会被拦截。
+验证测试笔记本设为 `none` 后，读写删除都会被拦截。
 
 #### 步骤
 
@@ -1105,60 +1174,23 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
-随后尝试以下读操作：
-
-1. `notebook.get_conf`
-2. `notebook.get_child_docs`
-3. `document.get_path(id=sourceDocId)`
-4. `document.get_hpath(id=sourceDocId)`
-5. `document.get_child_docs(id=targetDocId)`
-6. `document.get_child_blocks(id=sourceDocId)`
-7. `block.get_children(id=sourceDocId)`
-8. `block.get_kramdown(id=sourceDocId)`
-9. `block.get_attrs(id=appendBlockId)`
-
-然后继续尝试以下写操作（都只针对测试对象）：
-
-10. `document.create`
-11. `document.rename(id=sourceDocId, ...)`
-12. `document.remove(id=deleteDocId)`
-13. `document.move(fromIDs=[pathMoveDocId], toID=targetDocId)`
-14. `block.append(parentID=sourceDocId, ...)`
-15. `block.update(id=appendBlockId, ...)`
-16. `block.delete(id=appendBlockId)`
-
-如条件允许，再补充：
-
-17. `notebook.remove(notebook=testNotebookId)`，应返回删除权限不足
+复用 T22 中相同的一组读 / 写 / 删除动作进行验证。
 
 #### 预期
 
-上述读操作都应失败，并返回：
-
-```json
-{
-  "error": {
-    "type": "permission_denied",
-    "notebook": "<testNotebookId>",
-    "current_permission": "none",
-    "required_permission": "read"
-  }
-}
-```
-
-上述写操作也都应失败，并且返回同样的 `permission_denied`，只是：
-
-- `current_permission = none`
-- `required_permission = write`
-
-上述删除操作也都应失败，并且返回：
-
-- `current_permission = none`
-- `required_permission = delete`
+- 读操作都应失败，且：
+  - `current_permission = none`
+  - `required_permission = read`
+- 写操作都应失败，且：
+  - `current_permission = none`
+  - `required_permission = write`
+- 删除操作都应失败，且：
+  - `current_permission = none`
+  - `required_permission = delete`
 
 ---
 
-### T23 - `rwd` 权限下允许读写删
+### T25 - `rwd` 权限下允许读写删
 
 #### 目标
 
@@ -1182,7 +1214,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 随后至少执行一组读操作、一组写操作和一组删除操作验证恢复成功，例如：
 
-读操作示例：
+读操作：
 
 ```json
 {
@@ -1198,7 +1230,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
-写操作示例：
+写操作：
 
 ```json
 {
@@ -1209,7 +1241,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
-删除操作示例：
+删除操作：
 
 ```json
 {
@@ -1228,7 +1260,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T24 - 权限状态切换与恢复复核
+### T26 - 权限状态切换与恢复复核
 
 #### 目标
 
@@ -1253,13 +1285,11 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ## 8. 搜索功能测试
 
----
-
-### T25 - 全文搜索
+### T27 - 全文搜索
 
 #### 目标
 
-验证 `search(action="fulltext")` 能搜索到测试文档中的内容。
+验证 `search.fulltext` 能搜索到测试文档中的内容。
 
 #### 步骤
 
@@ -1268,7 +1298,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 ```json
 {
   "action": "fulltext",
-  "query": "doc append updated"
+  "query": "ai-interface-needle-<timestamp>"
 }
 ```
 
@@ -1280,11 +1310,11 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T26 - SQL 查询
+### T28 - SQL 查询与安全守卫
 
 #### 目标
 
-验证 `search(action="query_sql")` 能执行 SQL 查询，并验证安全守卫拒绝非 SELECT 语句。
+验证 `search.query_sql` 能执行 SQL 查询，并拒绝非 `SELECT` 语句。
 
 #### 步骤
 
@@ -1293,7 +1323,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 ```json
 {
   "action": "query_sql",
-  "stmt": "SELECT * FROM blocks WHERE content LIKE '%doc append updated%' LIMIT 5"
+  "stmt": "SELECT * FROM blocks WHERE content LIKE '%ai-interface-needle-%' LIMIT 5"
 }
 ```
 
@@ -1309,15 +1339,15 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 #### 预期
 
 - 合法查询返回数组，且包含匹配的块数据
-- 非法查询返回错误，包含 `Only SELECT and WITH (CTE) statements are allowed` 的提示
+- 非法查询返回错误，包含 `Only SELECT and WITH (CTE) statements are allowed` 或等价提示
 
 ---
 
-### T27 - 标签搜索
+### T29 - 标签搜索
 
 #### 目标
 
-验证 `search(action="search_tag")` 能返回标签列表。
+验证 `search.search_tag` 能返回标签列表。
 
 #### 步骤
 
@@ -1326,7 +1356,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 ```json
 {
   "action": "search_tag",
-  "k": ""
+  "k": "ai-interface-test"
 }
 ```
 
@@ -1334,14 +1364,15 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 - 返回对象包含 `tags` 数组
 - 返回对象包含 `k` 字段
+- 搜索结果中能匹配到 `tagLabel` 或其前缀
 
 ---
 
-### T28 - 反向链接与反向提及
+### T30 - 反向链接与反向提及
 
 #### 目标
 
-验证 `search(action="get_backlinks")` 和 `search(action="get_backmentions")` 能查询给定块的引用关系。
+验证 `search.get_backlinks` 和 `search.get_backmentions` 能查询给定块的引用关系。
 
 #### 步骤
 
@@ -1367,16 +1398,15 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 - `get_backlinks` 返回对象包含 `backlinks` 数组和 `backmentions` 数组
 - `get_backmentions` 返回对象包含 `backmentions` 数组
-- 两个调用都应成功（即使结果为空数组）
+- 两个调用都应成功，即使结果为空数组
 
 ---
 
 ## 9. 全量覆盖补充测试
 
-以下用例用于补齐当前手册中尚未覆盖的 tool / action。  
-如果前面某一步已经自然覆盖了某个 action，仍需在此处明确记录“已覆盖”并给出引用步骤号。
+本章节只负责**补齐主流程尚未明确覆盖的 action**。如果前面某一步已经自然覆盖某个 action，必须在补充测试记录里明确写“已由 Txx 覆盖”，不需要重复执行。
 
-### T29 - notebook 补充动作
+### T31 - notebook 补充动作
 
 #### 目标
 
@@ -1388,15 +1418,17 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 2. 读取 `get_permissions` 或 `list`，确认笔记本仍可见
 3. `notebook(action="set_conf", notebook=testNotebookId, conf={ "name": "AI MCP Interface Test <timestamp> Updated" })`
 4. `notebook(action="rename", notebook=testNotebookId, name="AI MCP Interface Test <timestamp> Final")`
-5. 记录最终名称，供清理阶段删除
+5. `remove` 由清理阶段覆盖，并在最终报告中引用清理结果
 
 #### 预期
 
 - `set_icon` / `set_conf` / `rename` 均成功
 - 笔记本始终可正常读取
-- `remove` 已在清理阶段覆盖，最终报告中需明确写明清理是否成功
+- `remove` 在清理阶段成功或被明确记录为 `FAIL`
 
-### T30 - document 补充动作
+---
+
+### T32 - document 补充动作
 
 #### 目标
 
@@ -1419,7 +1451,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `list_tree` 返回树中包含 `TargetDoc` 与 `ChildDoc`
 - `list_tree(maxDepth=0)` 会折叠更深层节点；若节点有子项，应出现 `childCount` 与 `childrenTruncated`
 - `search_docs` 返回结果中包含 `TargetDoc`
-- `get_doc(mode="markdown")` 返回干净 Markdown 文本与元数据；`mode="html"` 返回 HTML 视图载荷
+- `get_doc(mode="markdown")` 返回 Markdown 文本与元数据；`mode="html"` 若可用，应返回 HTML 视图载荷
 - 对长文档调用 `get_doc(mode="markdown")` 时，若内容超过阈值，应返回：
   - `truncated = true`
   - `contentLength`
@@ -1433,9 +1465,11 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 说明：
 
-- “较长文档 ID”可先通过 `search(action="query_sql")` 在工作区中查找总长度较大的文档，再读取其中一个只读文档；不要为此修改用户数据。
+- “较长文档 ID”可先通过 `search.query_sql` 在工作区中查找总长度较大的文档，再读取其中一个只读文档；不要为此修改用户数据。
 
-### T31 - block 补充读接口
+---
+
+### T33 - block 补充读接口
 
 #### 目标
 
@@ -1459,7 +1493,9 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `recent_updated` 返回最近更新块列表，且应能看到测试块或测试文档相关块
 - `word_count` 返回统计结果，且总数大于 `0`
 
-### T32 - block 引用转移
+---
+
+### T34 - block 引用转移
 
 #### 目标
 
@@ -1467,7 +1503,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 #### 步骤
 
-1. 在 `SourceDoc` 中创建两个块：
+1. 在 `SourceDoc` 中确认存在：
    - `refTargetBlockId`：被引用块
    - `refSourceBlockId`：包含对 `refTargetBlockId` 的块引用
 2. 再创建另一个块 `refTargetBlockId2`
@@ -1487,7 +1523,9 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - 原先引用 `refTargetBlockId` 的位置被转移到 `refTargetBlockId2`
 - 若工具返回受影响块列表，应记录下来
 
-### T33 - file 全量覆盖
+---
+
+### T35 - file 全量覆盖
 
 #### 目标
 
@@ -1506,7 +1544,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
-2.1 若文件大于配置阈值（默认 `10 MB`），第一次调用应被中止；只有在获得用户明确同意后，才允许使用：
+3. 若文件大于配置阈值（默认 `10 MB`），第一次调用应被中止；只有在获得用户明确同意后，才允许使用：
 
 ```json
 {
@@ -1517,59 +1555,24 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 }
 ```
 
-3. `file(action="render_template", id=sourceDocId, path="<workspace-template-path>")`
+4. `file(action="render_template", id=sourceDocId, path="<workspace-template-path>")`
    - 若当前环境没有可安全使用的模板文件，记录 `BLOCKED`
-4. `file(action="render_sprig", template="hello-{{ `codex` | upper }}")`
-5. `file(action="export_md", id=sourceDocId)`
-6. `file(action="export_resources", paths=["<uploadedAssetPath>"])`
+5. `file(action="render_sprig", template="hello-{{ `codex` | upper }}")`
+6. `file(action="export_md", id=sourceDocId)`
+7. `file(action="export_resources", paths=["<uploadedAssetPath>"])`
 
 #### 预期
 
 - `upload_asset` 成功并返回资源路径
-- 若文件大于配置阈值（默认 `10 MB`）且未传 `confirmLargeFile=true`，必须返回“停止当前操作并询问用户”的结构化结果
+- 若文件大于配置阈值且未传 `confirmLargeFile=true`，必须返回“停止当前操作并询问用户”的结构化结果
 - `render_template` 成功返回渲染内容，或在模板文件不存在时记录 `BLOCKED`
 - `render_sprig` 成功返回 `hello-CODEX`
 - `export_md` 成功返回 Markdown
 - `export_resources` 成功返回 ZIP 导出结果
 
-#### 设置页补充检查
+---
 
-1. 打开插件设置页，切到 `📁 Files`
-2. 确认 `Upload Asset` 默认启用，且右侧默认不显示重复的阈值说明文案
-3. 关闭 `Upload Asset`：
-   - 阈值数字输入框应隐藏
-4. 再启用 `Upload Asset`：
-   - 开关、数字输入框、`MB` 单位应处于同一视觉组
-   - 数字输入框前不应有明显多余空白
-   - 数字输入框应为紧凑宽度，不再是默认长输入框
-5. 依次输入 `0`、`1.9`、`9999`，保存后重开设置页：
-   - 最终值应分别规范化为 `1`、`1`、`1024`
-6. 输入一个正常值（如 `25`），保存后重开设置页：
-   - 阈值应保持为 `25`
-
-### T34 - search 全量覆盖补强
-
-#### 目标
-
-让 `fulltext` / `query_sql` / `search_tag` / `get_backlinks` / `get_backmentions` 都基于测试数据有明确命中。
-
-#### 步骤
-
-1. 确保 `SourceDoc` 中包含唯一词：`ai-interface-needle-<timestamp>`
-2. `search(action="fulltext", query="ai-interface-needle-<timestamp>")`
-3. `search(action="query_sql", stmt="SELECT id, content FROM blocks WHERE content LIKE '%ai-interface-needle-%' LIMIT 10")`
-4. `search(action="search_tag", k="ai-interface-test")`
-5. `search(action="get_backlinks", id=refTargetBlockId2)`
-6. `search(action="get_backmentions", id=sourceDocId)`
-
-#### 预期
-
-- 全文搜索与 SQL 查询都能命中测试数据
-- 标签搜索能返回测试标签
-- `get_backlinks` 能返回转移后的引用结果；若底层索引存在延迟，允许短暂轮询后再断言
-- `get_backmentions` 成功返回，即使为空数组也算通过
-
-### T35 - tag 全量覆盖
+### T36 - tag 全量覆盖
 
 #### 目标
 
@@ -1589,11 +1592,13 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `rename` 成功，原标签被替换
 - `remove` 成功，标签不再出现
 
-### T36 - system 全量覆盖
+---
+
+### T37 - system 全量覆盖
 
 #### 目标
 
-覆盖 `workspace_info` / `network` / `changelog` / `conf` / `sys_fonts` / `boot_progress` / `push_msg` / `push_err_msg` / `get_version` / `get_current_time`。
+覆盖 `workspace_info` / `network` / `changelog` / `conf` / `sys_fonts` / `boot_progress` / `push_msg` / `push_err_msg` / `get_version` / `get_current_time` / `help`。
 
 #### 步骤
 
@@ -1626,16 +1631,15 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `workspace_info` 返回工作区元数据
 - `network` / `conf` 返回已脱敏信息
 - `conf` 的 summary 顶层能看到 `conf` / `isPublish` / `start`
-- `conf(mode="get")` 只有使用 `conf.` 前缀路径时才应成功；`conf.appearance.mode`、`conf.langs[0]` 是有效示例
+- `conf(mode="get")` 只有使用 `conf.` 前缀路径时才应成功
 - `sys_fonts` 返回字体列表
 - `push_msg` / `push_err_msg` 返回成功，且不会中断后续测试
 - `get_version` / `get_current_time` 返回结构化字段
-
-如 `system(action="conf", mode="get", keyPath="appearance.themeMode")` 这类旧示例仍出现在返回 hint 或 help 中，记录为 `FAIL`
+- 如 `system(action="conf", mode="get", keyPath="appearance.themeMode")` 这类旧示例仍出现在返回 hint 或 help 中，记录为 `FAIL`
 
 ---
 
-### T36A - help 资源与渐进披露补充
+### T38 - help 与渐进披露补充
 
 #### 目标
 
@@ -1674,7 +1678,145 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
   - 引导读取局部内容的 `hint`
 - 若 `pageCount > 1`，第 6 步应返回与第一页不同的子块切片
 
-### T37 - 权限覆盖矩阵复核
+---
+
+### T39 - av 只读能力
+
+#### 目标
+
+验证 `av` 工具已暴露，且在用户提供真实 AV 时可安全读取。
+
+#### 步骤
+
+1. `av(action="search", keyword="test")`
+2. 如果已有 `providedAvID`，执行：
+   - `av(action="get", id=providedAvID)`
+   - `av(action="get_primary_key_values", avID=providedAvID)`
+
+#### 预期
+
+- `search` 返回结构化结果；即使为空，也应有明确字段表示搜索结果
+- 如果已有 `providedAvID`：
+  - `get` 返回完整 AV payload
+  - `get_primary_key_values` 返回库名、主键或行值结构
+- 如果没有 `providedAvID`：
+  - 只读探测完成后，将依赖真实 AV 的后续用例标记为 `BLOCKED`
+
+---
+
+### T40 - av 写链路（需用户先提供真实 AV）
+
+#### 目标
+
+验证现有真实 AV 的最小可写链路：加列、绑行、写值、清理。
+
+#### 前置条件
+
+- 用户已提供 `providedAvID`
+- 已准备 `avRowBlockId1` / `avRowBlockId2`
+- AI 仅修改本轮新加的测试列和新绑定的测试行
+
+#### 步骤
+
+1. `av(action="add_column", avID=providedAvID, keyName="AI Test Text <timestamp>", keyType="text")`
+2. 记录返回中的测试列标识为 `avTestColumnID`
+3. `av(action="add_rows", avID=providedAvID, blockIDs=[avRowBlockId1, avRowBlockId2])`
+4. 从 `add_rows` 返回或随后 `av.get` 结果中，记录两条测试行的 `row item ID`：
+   - `avTestRowID1`
+   - `avTestRowID2`
+5. `av(action="set_cell", avID=providedAvID, rowID=avTestRowID1, columnID=avTestColumnID, valueType="text", text="hello av")`
+6. `av(action="batch_set_cells", avID=providedAvID, items=[...])`
+7. 视情况执行一次 `av(action="get", id=providedAvID)` 复核写入结果
+8. `av(action="remove_rows", avID=providedAvID, srcIDs=[avRowBlockId1, avRowBlockId2])`
+9. `av(action="remove_column", avID=providedAvID, keyID=avTestColumnID)`
+
+#### 预期
+
+- `add_column` 成功，且能拿到可继续写入的列标识
+- `add_rows` 成功，且能解析出 `row item ID`
+- `set_cell` / `batch_set_cells` 成功
+- 清理时测试行和测试列都能删除
+
+#### 特别判定规则
+
+- 如果 `add_rows` 只返回 source block ID，或无法解析 row item ID，则后续写单元格步骤记为 `FAIL` 或 `BLOCKED`，不得猜测 ID
+- `rowID` 只能使用 AV 行项 ID，不能误用：
+  - source block ID
+  - cell value ID
+- 如果用户未提供 `providedAvID`，整个用例组统一为 `BLOCKED`
+
+---
+
+### T41 - av 复制能力
+
+#### 目标
+
+验证 `duplicate_block` 是否按内核真实语义返回“已准备好的复制结果”。
+
+#### 步骤
+
+1. 若未提供 `providedAvID`，记录 `BLOCKED`
+2. 否则执行：
+   - `av(action="duplicate_block", avID=providedAvID)`
+3. 若本轮只验证 prepare-only 语义，则记录返回中的：
+   - `duplicatedAvID`
+   - `duplicatedBlockID`
+   - `prepared`
+   - `semantics`
+4. 若本轮要验证“复制并插入”，则调用：
+   - `av(action="duplicate_block", avID=providedAvID, previousID=refSourceBlockId)`
+5. 对插入模式，继续验证：
+   - `block(action="exists", id=duplicatedBlockID)`
+   - `av(action="get", id=duplicatedAvID)`
+6. **不要**把 prepare-only 模式下返回的 `duplicatedBlockID` 直接当成“已经存在的可读块”作为通过条件
+
+#### 预期
+
+- 返回结构必须明确表达这是“内核已准备好的复制结果”
+- 返回中至少应包含：
+  - 新 `avID`
+  - 未来将使用的 `blockID`
+  - `prepared = true`
+  - 类似 `kernel_prepared_duplicate` 的语义标记
+- 不要求 `duplicatedBlockID` 在当前时刻已存在
+- 当传入 `previousID` 时，应改为完整复制插入语义，并满足：
+  - 新 `duplicatedBlockID` 已存在
+  - 新 `duplicatedAvID` 可读
+  - 返回类似 `duplicated_and_inserted` 的语义标记
+- 如果 MCP 仍把“块尚未物化”误报为失败，记录为 `FAIL`
+
+---
+
+### T42 - 设置页补充检查（仅限 `file.upload_asset` 相关）
+
+#### 目标
+
+验证插件设置页里 `Files` 分组的上传资产配置联动，不把它与 MCP 主流程混在一起。
+
+#### 步骤
+
+1. 打开插件设置页，切到 `📁 Files`
+2. 确认 `Upload Asset` 默认启用，且右侧默认不显示重复的阈值说明文案
+3. 关闭 `Upload Asset`：
+   - 阈值数字输入框应隐藏
+4. 再启用 `Upload Asset`：
+   - 开关、数字输入框、`MB` 单位应处于同一视觉组
+   - 数字输入框前不应有明显多余空白
+   - 数字输入框应为紧凑宽度，不再是默认长输入框
+5. 依次输入 `0`、`1.9`、`9999`，保存后重开设置页：
+   - 最终值应分别规范化为 `1`、`1`、`1024`
+6. 输入一个正常值（如 `25`），保存后重开设置页：
+   - 阈值应保持为 `25`
+
+#### 预期
+
+- 设置联动正确
+- 输入规范化正确
+- 不应影响 `file.upload_asset` 的接口测试结论
+
+---
+
+### T43 - 权限覆盖矩阵复核
 
 #### 目标
 
@@ -1684,13 +1826,15 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 最终报告必须额外给出一张覆盖矩阵，逐项标记下列 action 是否已被验证：
 
-- `notebook`: `open` `close` `get_conf` `set_conf` `set_icon` `get_child_docs` `get_permissions` `set_permission` `rename` `remove`
-- `document`: `create` `rename` `remove` `move` `get_path` `get_hpath` `get_ids` `get_child_blocks` `get_child_docs` `set_icon` `list_tree` `search_docs` `get_doc` `create_daily_note`
-- `block`: `insert` `prepend` `append` `update` `delete` `move` `fold` `unfold` `get_kramdown` `get_children` `transfer_ref` `set_attrs` `get_attrs` `exists` `info` `breadcrumb` `dom` `recent_updated` `word_count`
-- `file`: `upload_asset` `render_template` `render_sprig` `export_md` `export_resources`
-- `search`: `fulltext` `query_sql` `search_tag` `get_backlinks` `get_backmentions`
-- `tag`: `list` `rename` `remove`
-- `system`: `workspace_info` `network` `changelog` `conf` `sys_fonts` `boot_progress` `push_msg` `push_err_msg` `get_version` `get_current_time`
+- `notebook`：`open` `close` `get_conf` `set_conf` `set_icon` `get_child_docs` `get_permissions` `set_permission` `rename` `remove`
+- `document`：`create` `rename` `remove` `move` `get_path` `get_hpath` `get_ids` `get_child_blocks` `get_child_docs` `set_icon` `list_tree` `search_docs` `get_doc` `create_daily_note`
+- `block`：`insert` `prepend` `append` `update` `delete` `move` `fold` `unfold` `get_kramdown` `get_children` `transfer_ref` `set_attrs` `get_attrs` `exists` `info` `breadcrumb` `dom` `recent_updated` `word_count`
+- `av`：`get` `search` `add_rows` `remove_rows` `add_column` `remove_column` `set_cell` `batch_set_cells` `duplicate_block` `get_primary_key_values`
+- `file`：`upload_asset` `render_template` `render_sprig` `export_md` `export_resources`
+- `search`：`fulltext` `query_sql` `search_tag` `get_backlinks` `get_backmentions`
+- `tag`：`list` `rename` `remove`
+- `system`：`workspace_info` `network` `changelog` `conf` `sys_fonts` `boot_progress` `push_msg` `push_err_msg` `get_version` `get_current_time`
+- `mascot`：`get_balance` `shop` `buy`
 
 如果某项未覆盖，必须明确标记为 `MISS`，不能默认算通过。
 
@@ -1703,9 +1847,10 @@ AI 必须清理自己创建的数据。
 ### 建议清理顺序
 
 1. 如果权限不是 `rwd`，先恢复为 `rwd`
-2. 删除测试过程中新增的块（如有必要）
-3. 删除测试文档
-4. 删除测试笔记本
+2. 如果执行过 `av` 写测试，先删除测试过程中新增的 AV 行 / 列
+3. 删除测试过程中新增的块（如有必要）
+4. 删除测试文档
+5. 删除测试笔记本
 
 ### 最低要求
 
@@ -1734,12 +1879,15 @@ AI 完成测试后，必须输出如下结构的报告。
   - `notebook.get_child_docs`
   - `document.get_child_blocks`
   - `document.get_child_docs`
+  - `av.get`
+  - `av.add_rows`
   - `search.fulltext`
   - `search.query_sql`
   - `tag.list`
   - `system.workspace_info`
+  - `mascot.get_balance`
 
-### 11.3 用例结果
+### 11.3 主流程结果
 
 按如下格式逐条列出：
 
@@ -1747,7 +1895,12 @@ AI 完成测试后，必须输出如下结构的报告。
 - `T02 PASS` - 原因
 - `T03 FAIL` - 实际返回 xxx，预期 yyy
 
-### 11.4 关键结论
+### 11.4 补充覆盖结果
+
+- `T31 PASS/BLOCKED/FAIL` - 原因
+- 已由前文覆盖的 action，要写明引用的 `Txx`
+
+### 11.5 关键结论
 
 必须明确回答以下问题：
 
@@ -1768,16 +1921,20 @@ AI 完成测试后，必须输出如下结构的报告。
 15. `rwd` 下删除操作是否恢复正常？
 16. 权限在 `r -> rw -> none -> rwd` 切换后是否立即生效？
 17. `document.get_path` 是否已受读权限保护？
-18. `block` 工具是否已不再通过”把块 ID 当文档 ID”导致权限漏检？
+18. `block` 工具是否已不再通过“把块 ID 当文档 ID”导致权限漏检？
 19. `search.fulltext` 是否能正常搜索内容？
-20. `search.query_sql` 是否拒绝非 SELECT 语句？
+20. `search.query_sql` 是否拒绝非 `SELECT` 语句？
 21. `search.get_backlinks` / `search.get_backmentions` 是否正常返回？
 22. `tag.list` / `tag.rename` / `tag.remove` 是否正常？
 23. `system` 工具全部 action 是否可正常返回？
 24. `file.upload_asset` / `file.render_template` / `file.export_resources` 是否正常？
-17. 是否所有已暴露 action 都至少测试到一次？
+25. 在用户已提供真实 AV 的前提下，`av.get` / `add_column` / `add_rows` / `set_cell` / `batch_set_cells` / `remove_rows` / `remove_column` 是否正常？
+26. `av.duplicate_block` 是否返回了可解释、可继续追踪的结果？
+27. `mascot.get_balance` / `shop` 是否正常？
+28. 若余额足够，`mascot.buy` 是否正常？
+29. 是否所有已暴露 action 都至少测试到一次？
 
-### 11.5 覆盖矩阵
+### 11.6 覆盖矩阵
 
 必须输出按 tool 分组的 action 覆盖矩阵：
 
@@ -1786,7 +1943,7 @@ AI 完成测试后，必须输出如下结构的报告。
 - `BLOCKED`：环境限制导致无法执行
 - `MISS`：本轮未覆盖到
 
-### 11.6 遗留问题
+### 11.7 遗留问题
 
 如果有异常，必须列出：
 
@@ -1795,7 +1952,7 @@ AI 完成测试后，必须输出如下结构的报告。
 - 实际返回
 - 推测原因
 
-### 11.7 最终 Bug 列表（必须放在报告最后）
+### 11.8 最终 Bug 列表（必须放在报告最后）
 
 在整份最终报告的**最后**，必须单独输出一个 `Bug 列表` 小节，用来汇总所有接口设计或返回语义问题。
 
@@ -1824,7 +1981,8 @@ AI 完成测试后，必须输出如下结构的报告。
 
 > 请严格按照 `AI_INTERFACE_TEST.md` 执行 SiYuan MCP 接口测试。  
 > 只允许操作你自己创建的测试笔记本和测试文档。  
+> 如果要测试 `av` 写链路，必须要求用户先提供一个现成的真实数据库 `avID`；不允许把 Markdown 表格当数据库。  
 > 每一步都要记录调用参数、返回结果、预期结果和 PASS/FAIL。  
 > 如果某一步失败，保留现场并继续执行后续安全步骤。  
 > 必须覆盖所有已暴露的聚合 tool 和 action；如果某项因环境原因无法执行，标记为 BLOCKED，不允许跳过不记。  
-> 测试结束后必须恢复权限并清理测试数据，最后按文档中的“最终报告模板”输出完整报告和覆盖矩阵。
+> 测试结束后必须恢复权限并清理测试数据，最后按文档中的“最终报告模板”输出完整报告、关键结论、覆盖矩阵，以及最后的 `Bug 列表`。

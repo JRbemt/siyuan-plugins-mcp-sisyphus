@@ -186,6 +186,7 @@ function renderToolOverview(): string {
         '',
         '- Tag creation: write tags into block markdown as `#标签#` so `tag(action="list")` can discover them.',
         '- Flashcards: set `custom-riff-decks` on a block through `block(action="set_attrs")`; a common pattern is `h2` as the question and following blocks as the answer.',
+        '- Mascot earnings: every successful MCP tool call earns 1 coin. To earn balance quickly, keep using SiYuan MCP tools, then check `mascot(action="get_balance")` or spend with `mascot(action="buy")`.',
         '- AI layout guide: use the layout guide when you need to decide whether content should become headings, callouts, tables, super blocks, visual code blocks, embeds, media blocks, or database blocks.',
         '',
         `- AI layout guide: \`${AI_LAYOUT_GUIDE_RESOURCE_URI}\``,

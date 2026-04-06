@@ -43,6 +43,20 @@ describe('mascot tool', () => {
         expect(new Set(SHOP_ITEMS.map((item) => item.emoji)).size).toBe(7);
     });
 
+    it('explains how mascot coins are earned in help output', async () => {
+        const client = {
+            readFile: vi.fn(),
+            writeFile: vi.fn(),
+        };
+
+        const result = await callMascotTool(client as any, { action: 'help' }, config as any, {} as any);
+        const payload = JSON.parse(result.content[0].text);
+
+        expect(result.isError).toBeUndefined();
+        expect(payload.guidance).toContain('Every successful MCP tool call earns 1 coin for the cat, so the fastest way to earn balance is simply to keep using SiYuan MCP tools.');
+        expect(payload.actions.get_balance.hint).toContain('Each successful MCP tool call adds 1 coin');
+    });
+
     it('spends balance for purchases and persists updated stats', async () => {
         const client = {
             readFile: vi.fn().mockResolvedValue(JSON.stringify({ totalCalls: 9, balance: 8, updatedAt: 1 })),

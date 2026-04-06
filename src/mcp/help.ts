@@ -45,7 +45,7 @@ export const AV_GUIDANCE: string[] = [
     'AV actions operate on real SiYuan attribute views (database blocks), not Markdown tables.',
     'The current MCP AV tool supports operating on existing AVs and duplicating database blocks, but it does not create a brand-new AV from scratch.',
     'Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cell") or av(action="batch_set_cells").',
-    'For cell writes, rowID must be the database row item ID, not the original source block ID. add_rows now returns blockID -> rowID mappings to help chain writes safely.',
+    'For cell writes, rowID must be the database row item ID stored in each AV value\'s blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.',
     'AV permission checks are resolved from existing row/block context; a completely empty AV may be unreadable or unwritable until its owning context can be resolved.',
     'av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.',
 ];
@@ -74,6 +74,7 @@ export const SYSTEM_GUIDANCE: string[] = [
 
 export const MASCOT_GUIDANCE: string[] = [
     'mascot actions operate on the cat’s spendable balance.',
+    'Every successful MCP tool call earns 1 coin for the cat, so the fastest way to earn balance is simply to keep using SiYuan MCP tools.',
     'Use mascot(action="shop") to list available items and their stable item IDs.',
     'Use mascot(action="buy", item_id=...) to purchase an item and spend from the balance.',
 ];
@@ -125,13 +126,13 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
 export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     get: 'Use an attribute view ID. Returns the full AV payload after permission checks.',
     search: 'Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons.',
-    add_rows: 'Use avID + blockIDs to add existing blocks as rows. Success results include blockID -> rowID mappings when MCP can re-read them from the AV. Optional blockID/viewID/groupID/previousID refine the insertion target.',
+    add_rows: 'Use avID + blockIDs to add existing blocks as rows. MCP now polls briefly after insertion and only reports success when each source blockID resolves to exactly one writable rowID. Optional blockID/viewID/groupID/previousID refine the insertion target.',
     remove_rows: 'Use avID + srcIDs to remove rows from the AV.',
-    add_column: 'Use avID + keyName + keyType, and optionally keyID. MCP generates keyID automatically when omitted. For multi-select columns, use keyType="mSelect".',
+    add_column: 'Use avID + keyName + keyType, and optionally keyID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber".',
     remove_column: 'Use avID + keyID. removeRelationDest only matters for relation columns.',
-    set_cell: 'Use avID + rowID + columnID + valueType and the matching typed field. rowID must be the AV row item ID, not the source block ID. Example: valueType="number" with number=12.5.',
-    batch_set_cells: 'Use avID + items[]. Each item requires rowID + columnID + valueType and its matching typed field. MCP rejects source block IDs and suggests the matching row item ID when it can.',
-    duplicate_block: 'Duplicates the database block for an existing AV and verifies that the returned avID + blockID are resolvable before reporting success.',
+    set_cell: 'Use avID + rowID + columnID + valueType and the matching typed field. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. valueType="mAsset" accepts assets[] plus optional text markdown.',
+    batch_set_cells: 'Use avID + items[]. Each item requires rowID + columnID + valueType and its matching typed field. MCP rejects cell value IDs and source block IDs, and suggests the matching row item ID when it can. valueType="mAsset" accepts assets[].',
+    duplicate_block: 'MCP first calls the kernel duplicate API, then inserts the duplicated NodeAttributeView block into the document tree. By default it inserts after the source database block; provide previousID to override the insertion target.',
     get_primary_key_values: 'Returns the AV name plus primary-key rows, with optional keyword/page/pageSize filtering.',
 };
 
@@ -177,7 +178,7 @@ export const SYSTEM_ACTION_HINTS: Partial<Record<SystemAction, string>> = {
 };
 
 export const MASCOT_ACTION_HINTS: Partial<Record<MascotAction, string>> = {
-    get_balance: 'Returns the cat’s current balance and lifetime earned count.',
+    get_balance: 'Returns the cat’s current balance and lifetime earned count. Each successful MCP tool call adds 1 coin and increments the lifetime count.',
     shop: 'Returns the current mascot shop inventory including stable item IDs, labels, cost, type, and emoji.',
     buy: 'Buys one shop item by item_id and deducts its configured cost from balance.',
 };

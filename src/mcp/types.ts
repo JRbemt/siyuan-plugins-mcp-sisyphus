@@ -367,7 +367,13 @@ export const BlockWordCountSchema = z.object({
     ids: z.array(z.string()).describe("One or more block IDs"),
 });
 
-const AvValueTypeSchema = z.enum(["text", "number", "date", "checkbox", "select", "multi_select", "relation", "url", "email", "phone"]);
+const AvValueTypeSchema = z.enum(["text", "number", "date", "checkbox", "select", "multi_select", "relation", "url", "email", "phone", "mAsset"]);
+
+const AvAssetItemSchema = z.object({
+    type: z.enum(["image", "file"]).describe("Asset entry type"),
+    content: z.string().describe("Asset path stored by SiYuan, e.g. assets/foo.png"),
+    name: z.string().optional().describe("Optional display name"),
+});
 
 const AvSetCellValueFieldsSchema = z.object({
     valueType: AvValueTypeSchema.describe("Cell value type"),
@@ -384,6 +390,7 @@ const AvSetCellValueFieldsSchema = z.object({
     url: z.string().optional().describe("URL value for valueType=url"),
     email: z.string().optional().describe("Email value for valueType=email"),
     phone: z.string().optional().describe("Phone value for valueType=phone"),
+    assets: z.array(AvAssetItemSchema).optional().describe("Asset entries for valueType=mAsset"),
 }).superRefine((value, ctx) => {
     const fieldByType: Record<z.infer<typeof AvValueTypeSchema>, keyof typeof value> = {
         text: "text",
@@ -396,6 +403,7 @@ const AvSetCellValueFieldsSchema = z.object({
         url: "url",
         email: "email",
         phone: "phone",
+        mAsset: "assets",
     };
 
     const expectedField = fieldByType[value.valueType];
@@ -446,7 +454,7 @@ export const AvAddColumnSchema = z.object({
     avID: z.string().describe("Attribute view ID"),
     keyID: z.string().optional().describe("Optional new column key ID; MCP generates one when omitted"),
     keyName: z.string().describe("New column name"),
-    keyType: z.enum(["text", "number", "date", "select", "mSelect", "url", "email", "phone", "template", "created", "updated", "checkbox", "relation", "rollup"]).describe("Column type"),
+    keyType: z.enum(["text", "number", "date", "select", "mSelect", "url", "email", "phone", "mAsset", "template", "created", "updated", "checkbox", "relation", "rollup", "lineNumber"]).describe("Column type"),
     keyIcon: z.string().optional().describe("Optional column icon"),
     previousKeyID: z.string().optional().describe("Insert after this existing column key ID"),
 });
@@ -483,6 +491,7 @@ export const AvBatchSetCellsSchema = z.object({
 export const AvDuplicateBlockSchema = z.object({
     action: z.literal("duplicate_block"),
     avID: z.string().describe("Source attribute view ID"),
+    previousID: z.string().optional().describe("Optional block ID to insert the duplicated database block after, overriding the default source-block insertion target"),
 });
 
 export const AvGetPrimaryKeyValuesSchema = z.object({

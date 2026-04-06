@@ -405,7 +405,9 @@ async function runAvSmoke(client, createdBlockIds) {
     assert.equal(avDuplicate.json.success, true);
     assert.equal(typeof avDuplicate.json.avID, 'string');
     assert.equal(typeof avDuplicate.json.blockID, 'string');
-    createdBlockIds.push(avDuplicate.json.blockID);
+    assert.equal(avDuplicate.json.prepared, true);
+    assert.equal(avDuplicate.json.materialized, false);
+    assert.equal(avDuplicate.json.semantics, 'kernel_prepared_duplicate');
     console.log(`T24 PASS - AV read/duplicate smoke on ${avID}`);
 }
 

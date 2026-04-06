@@ -2,6 +2,12 @@
 
 本文件记录项目的主要版本变更。
 
+## v0.1.15 - 2026-04-07
+
+- 修正 `av` 行/单元格 ID 语义，明确区分源块 ID、行 item ID 与 value ID，并让 `add_rows`、`set_cell`、`batch_set_cells` 在写链路里返回或提示可写 `rowID`
+- 补齐 `av` 对 `mAsset`、`lineNumber` 等字段类型的支持，优化数据库块复制后的插入与可读性校验，减少真实数据库操作时的歧义
+- 同步补充 `mascot` 挣米规则、回归测试手册与双语文档说明，刷新 AV / mascot 相关测试覆盖
+
 ## v0.1.14 - 2026-04-05
 
 - 新增 `siyuan://help/ai-layout-guide` 帮助资源，并在 tool overview 与服务端系统提示中补充 SiYuan 布局决策规则，帮助 AI 更稳定地区分标题、callout、超级块、可渲染代码块、嵌入与数据库块

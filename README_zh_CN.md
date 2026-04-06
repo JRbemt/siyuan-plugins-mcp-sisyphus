@@ -75,6 +75,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 
 ## 版本时间线
 
+- `v0.1.15`：厘清 AV 行 ID / value ID / 源块 ID 语义，补强 `mAsset` 与数据库复制写链路，并同步刷新 mascot 与回归测试文档
 - `v0.1.14`：新增 `ai-layout-guide` 帮助资源，补强思源笔记布局、标签、书签与闪卡语义指引，并同步刷新 8 个聚合 tool 的冒烟测试覆盖
 - `v0.1.13`：统一要求走标准 token 鉴权请求，自动清理 `SIYUAN_API_URL` 尾部斜杠，并修复空响应导致的 JSON 解析报错
 - `v0.1.12`：新增 `mascot` 聚合 tool，补强 Docker / 环境变量鉴权接入流程，并同步刷新第 8 个工具面的文档与测试
@@ -246,6 +247,8 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `get_balance` | 获取猫猫当前可用余额 |
 | `shop` | 列出猫猫商店中的商品，包含稳定 `item_id`、名称、价格、类型和 emoji |
 | `buy` | 根据 `item_id` 购买一件猫猫商店商品，并从当前余额中扣费 |
+
+每次成功调用任意 MCP tool，猫猫都会赚到 1 米，所以想快速攒余额，最简单的方法就是多用 SiYuan MCP。`mascot(action="get_balance")` 还会返回累计赚米次数。
 
 标签不是通过单独的创建 action 生成的。请在块的 Markdown 内容里写成 `#标签#`，这样思源才能识别为真正的标签。
 

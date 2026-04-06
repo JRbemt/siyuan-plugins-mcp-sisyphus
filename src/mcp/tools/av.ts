@@ -1,6 +1,7 @@
 import type { SiYuanClient } from '../../api/client';
 import * as avApi from '../../api/av';
 import * as blockApi from '../../api/block';
+import * as transactionApi from '../../api/transaction';
 import type { AvAction, CategoryToolConfig } from '../config';
 import { AV_ACTION_HINTS, AV_GUIDANCE } from '../help';
 import type { PermissionManager } from '../permissions';
@@ -24,7 +25,7 @@ import { buildAggregatedTool, createActionSchema, createDisabledActionResult, cr
 export const AV_TOOL_NAME = 'av';
 
 type StrongCellValueInput = {
-    valueType: 'text' | 'number' | 'date' | 'checkbox' | 'select' | 'multi_select' | 'relation' | 'url' | 'email' | 'phone';
+    valueType: 'text' | 'number' | 'date' | 'checkbox' | 'select' | 'multi_select' | 'relation' | 'url' | 'email' | 'phone' | 'mAsset';
     text?: string;
     number?: number;
     numberFormat?: string;
@@ -38,6 +39,11 @@ type StrongCellValueInput = {
     url?: string;
     email?: string;
     phone?: string;
+    assets?: Array<{
+        type: 'image' | 'file';
+        content: string;
+        name?: string;
+    }>;
 };
 
 export const AV_VARIANTS: ActionVariant<AvAction>[] = [
@@ -79,7 +85,7 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
             avID: { type: 'string', description: 'Attribute view ID' },
             keyID: { type: 'string', description: 'Optional new column key ID; MCP generates one when omitted' },
             keyName: { type: 'string', description: 'New column name' },
-            keyType: { type: 'string', enum: ['text', 'number', 'date', 'select', 'mSelect', 'url', 'email', 'phone', 'template', 'created', 'updated', 'checkbox', 'relation', 'rollup'], description: 'Column type' },
+            keyType: { type: 'string', enum: ['text', 'number', 'date', 'select', 'mSelect', 'url', 'email', 'phone', 'mAsset', 'template', 'created', 'updated', 'checkbox', 'relation', 'rollup', 'lineNumber'], description: 'Column type' },
             keyIcon: { type: 'string', description: 'Optional column icon' },
             previousKeyID: { type: 'string', description: 'Insert after this key ID' },
         }, ['avID', 'keyName', 'keyType'], 'Add a column to an attribute view.'),
@@ -99,7 +105,7 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
             avID: { type: 'string', description: 'Attribute view ID' },
             rowID: { type: 'string', description: 'Row item ID' },
             columnID: { type: 'string', description: 'Column key ID' },
-            valueType: { type: 'string', enum: ['text', 'number', 'date', 'checkbox', 'select', 'multi_select', 'relation', 'url', 'email', 'phone'], description: 'Cell value type' },
+            valueType: { type: 'string', enum: ['text', 'number', 'date', 'checkbox', 'select', 'multi_select', 'relation', 'url', 'email', 'phone', 'mAsset'], description: 'Cell value type' },
             text: { type: 'string', description: 'Text value when valueType=text' },
             number: { type: 'number', description: 'Number value when valueType=number' },
             numberFormat: { type: 'string', description: 'Optional number format such as commas, percent, USD, or CNY' },
@@ -113,6 +119,19 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
             url: { type: 'string', description: 'URL value when valueType=url' },
             email: { type: 'string', description: 'Email value when valueType=email' },
             phone: { type: 'string', description: 'Phone value when valueType=phone' },
+            assets: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        type: { type: 'string', enum: ['image', 'file'], description: 'Asset entry type' },
+                        content: { type: 'string', description: 'Asset path stored by SiYuan, e.g. assets/foo.png' },
+                        name: { type: 'string', description: 'Optional display name' },
+                    },
+                    required: ['type', 'content'],
+                },
+                description: 'Asset entries when valueType=mAsset',
+            },
         }, ['avID', 'rowID', 'columnID', 'valueType'], 'Update one attribute view cell using a strong typed input shape.'),
     },
     {
@@ -126,7 +145,8 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
         action: 'duplicate_block',
         schema: createActionSchema('duplicate_block', {
             avID: { type: 'string', description: 'Source attribute view ID' },
-        }, ['avID'], 'Duplicate a database block from an existing attribute view.'),
+            previousID: { type: 'string', description: 'Optional block ID to insert the duplicated database block after' },
+        }, ['avID'], 'Duplicate a database block from an existing attribute view. By default MCP inserts the duplicate after the source database block; previousID overrides that insertion target.'),
     },
     {
         action: 'get_primary_key_values',
@@ -158,11 +178,6 @@ interface AvHandlerContext {
     rawArgs: Record<string, unknown>;
 }
 
-type DuplicateVerificationResult = {
-    duplicatedBlockExists: boolean;
-    duplicatedAvReadable: boolean;
-};
-
 function generateSiYuanNodeId(now = new Date()): string {
     const pad = (value: number, length = 2) => String(value).padStart(length, '0');
     const timestamp = [
@@ -188,14 +203,24 @@ type AvContextResolution = {
 
 type AvRowBinding = {
     rowID?: string;
-    blockID?: string;
+    sourceBlockID?: string;
+    valueIDs: string[];
 };
 
 type AvRowLookup = {
     rows: AvRowBinding[];
     rowIDs: Set<string>;
-    sourceToRowIDs: Map<string, string[]>;
+    sourceBlockToRowIDs: Map<string, string[]>;
+    valueIdToRowIDs: Map<string, string[]>;
 };
+
+type AddRowsResolution = {
+    rows: Array<{ blockID: string; rowID?: string; rowIDs?: string[]; status?: 'resolved' | 'missing' | 'ambiguous' }>;
+    unresolvedBlockIDs: string[];
+};
+
+const ADD_ROWS_POLL_ATTEMPTS = 6;
+const ADD_ROWS_POLL_DELAY_MS = 500;
 
 function extractFirstRowBlockId(avData: unknown): string | undefined {
     if (!avData || typeof avData !== 'object') return undefined;
@@ -206,11 +231,11 @@ function extractFirstRowBlockId(avData: unknown): string | undefined {
         if (!entry || typeof entry !== 'object') continue;
         const typedEntry = entry as {
             key?: { type?: string };
-            values?: Array<{ blockID?: string }>;
+            values?: Array<{ block?: { id?: string } }>;
         };
         if (typedEntry.key?.type !== 'block' || !Array.isArray(typedEntry.values)) continue;
-        const blockValue = typedEntry.values.find((value) => typeof value?.blockID === 'string' && value.blockID.length > 0);
-        if (blockValue?.blockID) return blockValue.blockID;
+        const blockValue = typedEntry.values.find((value) => typeof value?.block?.id === 'string' && value.block.id.length > 0);
+        if (blockValue?.block?.id) return blockValue.block.id;
     }
     return undefined;
 }
@@ -237,58 +262,80 @@ function getNestedStringField(value: unknown, path: string[]): string | undefine
 }
 
 function extractRowIdFromValue(value: unknown): string | undefined {
-    return getStringField(value, ['id', 'itemId', 'itemID', 'rowID']);
-}
-
-function extractSourceBlockIdFromValue(value: unknown): string | undefined {
-    return getStringField(value, ['blockID', 'srcID', 'srcId'])
-        ?? getNestedStringField(value, ['block', 'id'])
+    return getStringField(value, ['blockID', 'itemId', 'itemID', 'rowID'])
         ?? getNestedStringField(value, ['block', 'blockID']);
 }
 
+function extractSourceBlockIdFromBlockValue(value: unknown): string | undefined {
+    return getNestedStringField(value, ['block', 'id'])
+        ?? getStringField(value, ['srcID', 'srcId']);
+}
+
+function extractValueIdFromValue(value: unknown): string | undefined {
+    return getStringField(value, ['id']);
+}
+
 function extractAvRowLookup(avData: unknown): AvRowLookup {
-    const rowsByIndex = new Map<number, AvRowBinding>();
+    const rowsById = new Map<string, AvRowBinding>();
+    const rowsInOrder: AvRowBinding[] = [];
     if (!avData || typeof avData !== 'object') {
-        return { rows: [], rowIDs: new Set<string>(), sourceToRowIDs: new Map<string, string[]>() };
+        return { rows: [], rowIDs: new Set<string>(), sourceBlockToRowIDs: new Map<string, string[]>(), valueIdToRowIDs: new Map<string, string[]>() };
     }
 
     const keyValues = (avData as { keyValues?: unknown }).keyValues;
     if (!Array.isArray(keyValues)) {
-        return { rows: [], rowIDs: new Set<string>(), sourceToRowIDs: new Map<string, string[]>() };
+        return { rows: [], rowIDs: new Set<string>(), sourceBlockToRowIDs: new Map<string, string[]>(), valueIdToRowIDs: new Map<string, string[]>() };
     }
 
     for (const entry of keyValues) {
         if (!entry || typeof entry !== 'object') continue;
-        const values = (entry as { values?: unknown }).values;
+        const typedEntry = entry as { key?: { type?: string }; values?: unknown };
+        const values = typedEntry.values;
         if (!Array.isArray(values)) continue;
 
-        values.forEach((value, index) => {
-            const row = rowsByIndex.get(index) ?? {};
+        values.forEach((value) => {
             const rowID = extractRowIdFromValue(value);
-            const blockID = extractSourceBlockIdFromValue(value);
-            if (rowID) row.rowID = rowID;
-            if (blockID) row.blockID = blockID;
-            if (rowID || blockID) {
-                rowsByIndex.set(index, row);
+            if (!rowID) return;
+
+            let row = rowsById.get(rowID);
+            if (!row) {
+                row = { rowID, valueIDs: [] };
+                rowsById.set(rowID, row);
+                rowsInOrder.push(row);
             }
+
+            const valueID = extractValueIdFromValue(value);
+            const sourceBlockID = typedEntry.key?.type === 'block' ? extractSourceBlockIdFromBlockValue(value) : undefined;
+            if (sourceBlockID) row.sourceBlockID = sourceBlockID;
+            if (valueID && !row.valueIDs.includes(valueID)) row.valueIDs.push(valueID);
         });
     }
 
-    const rows = [...rowsByIndex.values()].filter((row) => row.rowID || row.blockID);
+    const rows = rowsInOrder.filter((row) => row.rowID || row.sourceBlockID || row.valueIDs.length > 0);
     const rowIDs = new Set<string>();
-    const sourceToRowIDs = new Map<string, string[]>();
+    const sourceBlockToRowIDs = new Map<string, string[]>();
+    const valueIdToRowIDs = new Map<string, string[]>();
 
     for (const row of rows) {
         if (row.rowID) rowIDs.add(row.rowID);
-        if (!row.blockID || !row.rowID) continue;
-        const matches = sourceToRowIDs.get(row.blockID) ?? [];
-        if (!matches.includes(row.rowID)) {
-            matches.push(row.rowID);
-            sourceToRowIDs.set(row.blockID, matches);
+        if (row.sourceBlockID && row.rowID) {
+            const matches = sourceBlockToRowIDs.get(row.sourceBlockID) ?? [];
+            if (!matches.includes(row.rowID)) {
+                matches.push(row.rowID);
+                sourceBlockToRowIDs.set(row.sourceBlockID, matches);
+            }
+        }
+        if (!row.rowID) continue;
+        for (const valueID of row.valueIDs) {
+            const matches = valueIdToRowIDs.get(valueID) ?? [];
+            if (!matches.includes(row.rowID)) {
+                matches.push(row.rowID);
+                valueIdToRowIDs.set(valueID, matches);
+            }
         }
     }
 
-    return { rows, rowIDs, sourceToRowIDs };
+    return { rows, rowIDs, sourceBlockToRowIDs, valueIdToRowIDs };
 }
 
 function createAvRowIdErrorResult(
@@ -311,6 +358,80 @@ function createAvRowIdErrorResult(
     };
 }
 
+function createAddRowsSyncTimeoutResult(
+    avID: string,
+    blockIDs: string[],
+    resolution: AddRowsResolution,
+): ToolResult {
+    return {
+        content: [{
+            type: 'text',
+            text: JSON.stringify({
+                error: {
+                    type: 'api_error',
+                    tool: AV_TOOL_NAME,
+                    action: 'add_rows',
+                    reason: 'row_id_sync_timeout',
+                    message: `Added rows to attribute view "${avID}", but MCP could not observe writable row item IDs before the sync timeout expired.`,
+                    avID,
+                    blockIDs,
+                    rows: resolution.rows,
+                    unresolvedBlockIDs: resolution.unresolvedBlockIDs,
+                    hint: 'Retry av(action="add_rows") or wait briefly and re-read the database. Only call set_cell after add_rows returns rows[].rowID.',
+                },
+            }, null, 2),
+        }],
+        isError: true,
+    };
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
+function resolveAddedRows(rowLookup: AvRowLookup, blockIDs: string[]): AddRowsResolution {
+    const rows = blockIDs.map((blockID) => {
+        const matchedRowIDs = rowLookup.sourceBlockToRowIDs.get(blockID) ?? [];
+        if (matchedRowIDs.length === 1) {
+            return { blockID, rowID: matchedRowIDs[0] };
+        }
+        if (matchedRowIDs.length > 1) {
+            return { blockID, rowIDs: matchedRowIDs, status: 'ambiguous' as const };
+        }
+        return { blockID, status: 'missing' as const };
+    });
+    const unresolvedBlockIDs = rows
+        .filter((row) => !('rowID' in row))
+        .map((row) => row.blockID);
+    return { rows, unresolvedBlockIDs };
+}
+
+async function waitForAddedRows(
+    client: SiYuanClient,
+    avID: string,
+    blockIDs: string[],
+): Promise<AddRowsResolution> {
+    let lastResolution: AddRowsResolution = {
+        rows: blockIDs.map((blockID) => ({ blockID })),
+        unresolvedBlockIDs: [...blockIDs],
+    };
+
+    for (let attempt = 0; attempt < ADD_ROWS_POLL_ATTEMPTS; attempt += 1) {
+        const refreshed = await avApi.getAttributeView(client, avID);
+        lastResolution = resolveAddedRows(extractAvRowLookup(refreshed.av), blockIDs);
+        if (lastResolution.unresolvedBlockIDs.length === 0) {
+            return lastResolution;
+        }
+        if (attempt < ADD_ROWS_POLL_ATTEMPTS - 1) {
+            await sleep(ADD_ROWS_POLL_DELAY_MS);
+        }
+    }
+
+    return lastResolution;
+}
+
 function validateRowIdForAv(
     avID: string,
     action: 'set_cell' | 'batch_set_cells',
@@ -322,7 +443,40 @@ function validateRowIdForAv(
         return { ok: true, rowID: requestedRowID };
     }
 
-    const matchingRowIDs = rowLookup.sourceToRowIDs.get(requestedRowID);
+    const matchedValueRowIDs = rowLookup.valueIdToRowIDs.get(requestedRowID);
+    if (matchedValueRowIDs && matchedValueRowIDs.length === 1) {
+        return {
+            ok: false,
+            result: createAvRowIdErrorResult(action, {
+                reason: 'row_id_alias_detected',
+                message: `rowID "${requestedRowID}" is a cell value ID in attribute view "${avID}", not the database row item ID.`,
+                avID,
+                rowID: requestedRowID,
+                detectedValueID: requestedRowID,
+                suggestedRowID: matchedValueRowIDs[0],
+                ...(itemIndex === undefined ? {} : { itemIndex }),
+                hint: 'Use the AV row item ID stored in each value.blockID, or the rowID returned by av(action="add_rows"). Do not reuse value.id from set_cell responses as rowID.',
+            }),
+        };
+    }
+
+    if (matchedValueRowIDs && matchedValueRowIDs.length > 1) {
+        return {
+            ok: false,
+            result: createAvRowIdErrorResult(action, {
+                reason: 'row_id_alias_ambiguous',
+                message: `rowID "${requestedRowID}" matches multiple cell value records in attribute view "${avID}". Pass a concrete row item ID instead.`,
+                avID,
+                rowID: requestedRowID,
+                detectedValueID: requestedRowID,
+                candidateRowIDs: matchedValueRowIDs,
+                ...(itemIndex === undefined ? {} : { itemIndex }),
+                hint: 'Use the row item ID stored in value.blockID, not value.id.',
+            }),
+        };
+    }
+
+    const matchingRowIDs = rowLookup.sourceBlockToRowIDs.get(requestedRowID);
     if (matchingRowIDs && matchingRowIDs.length === 1) {
         return {
             ok: false,
@@ -334,7 +488,7 @@ function validateRowIdForAv(
                 detectedSourceBlockID: requestedRowID,
                 suggestedRowID: matchingRowIDs[0],
                 ...(itemIndex === undefined ? {} : { itemIndex }),
-                hint: 'Use the rowID returned by av(action="add_rows"), or read the database again and map source blockID -> row item ID before calling set_cell/batch_set_cells.',
+                hint: 'Use the row item ID stored in value.blockID, or the rowID returned by av(action="add_rows"). The source block ID lives in block.id and is not writable as rowID.',
             }),
         };
     }
@@ -358,12 +512,12 @@ function validateRowIdForAv(
     return {
         ok: false,
         result: createAvRowIdErrorResult(action, {
-            reason: 'row_id_not_found',
-            message: `rowID "${requestedRowID}" does not exist in attribute view "${avID}". Pass the database row item ID, not the source block ID.`,
+            reason: 'row_id_not_canonical',
+            message: `rowID "${requestedRowID}" is not a valid database row item ID in attribute view "${avID}". Pass the canonical row item ID stored in value.blockID.`,
             avID,
             rowID: requestedRowID,
             ...(itemIndex === undefined ? {} : { itemIndex }),
-            hint: 'Use the rowID returned by av(action="add_rows"), or call av(action="get") to map the source block to its row item ID.',
+            hint: 'Use the rowID returned by av(action="add_rows"), or inspect the block column in av(action="get"): value.blockID is the writable row item ID, while value.id is only the cell value ID.',
         }),
     };
 }
@@ -425,6 +579,34 @@ async function ensurePermissionForAvId(
     throw new Error(`Unable to resolve notebook permission scope for attribute view "${avID}" because all known owning block references are stale or missing.`);
 }
 
+async function resolveAvOwningBlockId(
+    client: SiYuanClient,
+    avID: string,
+    avData?: unknown,
+): Promise<string | undefined> {
+    const resolved = await resolveAvContext(client, avData ?? (await avApi.getAttributeView(client, avID)).av);
+    const candidateBlockIDs: string[] = [];
+    if (resolved.blockID) {
+        candidateBlockIDs.push(resolved.blockID);
+    }
+
+    try {
+        const mirrors = await avApi.getMirrorDatabaseBlocks(client, avID);
+        for (const entry of mirrors.refDefs ?? []) {
+            const refID = typeof entry?.refID === 'string' && entry.refID.length > 0 ? entry.refID : undefined;
+            if (refID && !candidateBlockIDs.includes(refID)) {
+                candidateBlockIDs.push(refID);
+            }
+        }
+    } catch (error) {
+        if (!isMissingBlockError(error)) {
+            throw error;
+        }
+    }
+
+    return candidateBlockIDs[0];
+}
+
 async function filterAvSearchResultsByPermission(
     client: SiYuanClient,
     permMgr: PermissionManager,
@@ -475,45 +657,6 @@ async function filterAvSearchResultsByPermission(
     };
 }
 
-async function validateDuplicatedAvResult(
-    client: SiYuanClient,
-    permMgr: PermissionManager,
-    sourceAvID: string,
-    duplicated: { avID?: string; blockID?: string },
-): Promise<{ avData: unknown; verification: DuplicateVerificationResult }> {
-    if (!duplicated.avID || !duplicated.blockID) {
-        throw new Error(`Duplicate AV returned incomplete identifiers for source "${sourceAvID}".`);
-    }
-
-    const blockExists = await blockApi.checkBlockExist(client, duplicated.blockID);
-    if (!blockExists) {
-        const error = new Error(`Duplicate AV verification failed: returned block "${duplicated.blockID}" does not exist.`);
-        (error as Error & { verification?: DuplicateVerificationResult }).verification = {
-            duplicatedBlockExists: false,
-            duplicatedAvReadable: false,
-        };
-        throw error;
-    }
-
-    try {
-        const { avData } = await ensurePermissionForAvId(client, permMgr, duplicated.avID, 'read');
-        return {
-            avData,
-            verification: {
-                duplicatedBlockExists: true,
-                duplicatedAvReadable: true,
-            },
-        };
-    } catch (error) {
-        const normalized = error instanceof Error ? error : new Error(String(error));
-        (normalized as Error & { verification?: DuplicateVerificationResult }).verification = {
-            duplicatedBlockExists: true,
-            duplicatedAvReadable: false,
-        };
-        throw normalized;
-    }
-}
-
 function parseDateMillis(value: string | number, fieldName: string): number {
     if (typeof value === 'number') {
         if (!Number.isFinite(value)) throw new Error(`${fieldName} must be a finite epoch millisecond value.`);
@@ -525,6 +668,10 @@ function parseDateMillis(value: string | number, fieldName: string): number {
         throw new Error(`${fieldName} must be a valid ISO date string or epoch milliseconds.`);
     }
     return parsed;
+}
+
+function buildDuplicateAvBlockDom(blockID: string, avID: string): string {
+    return `<div class="av" data-node-id="${blockID}" data-av-id="${avID}" data-type="NodeAttributeView" data-av-type="table"></div>`;
 }
 
 function buildStrongCellValue(
@@ -582,6 +729,23 @@ function buildStrongCellValue(
             return { ...base, type: 'email', email: { content: input.email } };
         case 'phone':
             return { ...base, type: 'phone', phone: { content: input.phone } };
+        case 'mAsset': {
+            const assets = (input.assets ?? []).map((asset) => ({
+                type: asset.type,
+                name: asset.name ?? '',
+                content: asset.content,
+            }));
+            const markdown = input.text
+                ?? assets.map((asset) => asset.type === 'image'
+                    ? `![](${asset.content})`
+                    : `[${asset.name || asset.content}](${asset.content})`).join('\n');
+            return {
+                ...base,
+                type: 'mAsset',
+                text: { content: markdown },
+                mAsset: assets,
+            };
+        }
         default:
             throw new Error(`Unsupported AV valueType: ${(input as { valueType: string }).valueType}`);
     }
@@ -591,7 +755,18 @@ async function handleGet({ client, permMgr, rawArgs }: AvHandlerContext): Promis
     const parsed = AvGetSchema.parse(rawArgs);
     const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.id, 'read');
     if (denied) return denied;
-    return createJsonResult({ id: parsed.id, av: avData });
+    const rowLookup = extractAvRowLookup(avData);
+    return createJsonResult({
+        id: parsed.id,
+        av: avData,
+        ...(rowLookup.rows.length > 0 ? {
+            resolvedRows: rowLookup.rows.map((row) => ({
+                rowID: row.rowID,
+                ...(row.sourceBlockID ? { sourceBlockID: row.sourceBlockID } : {}),
+                ...(row.valueIDs.length > 0 ? { valueIDs: row.valueIDs } : {}),
+            })),
+        } : {}),
+    });
 }
 
 async function handleSearch({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
@@ -641,33 +816,17 @@ async function handleAddRows({ client, permMgr, rawArgs }: AvHandlerContext): Pr
         srcs: parsed.blockIDs.map((id) => ({ id, isDetached: false })),
     });
 
-    const refreshed = await avApi.getAttributeView(client, parsed.avID);
-    const rowLookup = extractAvRowLookup(refreshed.av);
-    const rows = parsed.blockIDs.map((blockID) => {
-        const matchedRowIDs = rowLookup.sourceToRowIDs.get(blockID) ?? [];
-        if (matchedRowIDs.length === 1) {
-            return { blockID, rowID: matchedRowIDs[0] };
-        }
-        if (matchedRowIDs.length > 1) {
-            return { blockID, rowIDs: matchedRowIDs };
-        }
-        return { blockID };
-    });
-    const unresolvedBlockIDs = rows
-        .filter((row) => !('rowID' in row))
-        .map((row) => row.blockID);
+    const resolution = await waitForAddedRows(client, parsed.avID, parsed.blockIDs);
+    if (resolution.unresolvedBlockIDs.length > 0) {
+        return createAddRowsSyncTimeoutResult(parsed.avID, parsed.blockIDs, resolution);
+    }
 
     return createWriteSuccessResult({
         action: 'add_rows',
         avID: parsed.avID,
         blockIDs: parsed.blockIDs,
-        rows,
+        rows: resolution.rows,
         added: parsed.blockIDs.length,
-        ...(unresolvedBlockIDs.length > 0 ? {
-            unresolvedBlockIDs,
-            partial: true,
-            hint: 'Some new rows could not be mapped back to row item IDs from the refreshed AV payload. Re-read the AV before calling set_cell.',
-        } : {}),
     });
 }
 
@@ -767,16 +926,11 @@ async function handleBatchSetCells({ client, permMgr, rawArgs }: AvHandlerContex
 
 async function handleDuplicateBlock({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
     const parsed = AvDuplicateBlockSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write');
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write');
     if (denied) return denied;
 
     const response = await avApi.duplicateAttributeViewBlock(client, parsed.avID);
-    try {
-        await validateDuplicatedAvResult(client, permMgr, parsed.avID, response);
-    } catch (error) {
-        const normalized = error instanceof Error ? error : new Error(String(error));
-        const verification = (normalized as Error & { verification?: DuplicateVerificationResult }).verification
-            ?? { duplicatedBlockExists: false, duplicatedAvReadable: false };
+    if (!response.avID || !response.blockID) {
         return {
             content: [{
                 type: 'text',
@@ -785,23 +939,129 @@ async function handleDuplicateBlock({ client, permMgr, rawArgs }: AvHandlerConte
                         type: 'internal_error',
                         tool: AV_TOOL_NAME,
                         action: 'duplicate_block',
-                        message: normalized.message,
-                        reason: 'duplicate_verification_failed',
+                        reason: 'duplicate_identifiers_missing',
+                        message: `Duplicate AV returned incomplete identifiers for source "${parsed.avID}".`,
                         sourceAvID: parsed.avID,
                         duplicatedAvID: response.avID,
                         duplicatedBlockID: response.blockID,
-                        verification,
-                        hint: 'The kernel reported success, but MCP could not verify the duplicated AV/block. Treat this as a failed duplication and retry only after checking the source database state.',
                     },
                 }, null, 2),
             }],
             isError: true,
         };
     }
+
+    const insertedAfter = parsed.previousID ?? await resolveAvOwningBlockId(client, parsed.avID, avData);
+    if (!insertedAfter) {
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    error: {
+                        type: 'internal_error',
+                        tool: AV_TOOL_NAME,
+                        action: 'duplicate_block',
+                        reason: 'duplicate_insert_target_unresolved',
+                        message: `Duplicated AV identifiers were prepared for source "${parsed.avID}", but MCP could not resolve a database block insertion target.`,
+                        sourceAvID: parsed.avID,
+                        duplicatedAvID: response.avID,
+                        duplicatedBlockID: response.blockID,
+                        hint: 'SiYuan kernel duplicateAttributeViewBlock only prepares the duplicated AV definition. Provide previousID or ensure the source AV has a resolvable owning database block in the document tree.',
+                    },
+                }, null, 2),
+            }],
+            isError: true,
+        };
+    }
+
+    const destination = await ensurePermissionForDocumentId(client, permMgr, insertedAfter, 'write');
+    if (destination.denied) return destination.denied;
+
+    const dom = buildDuplicateAvBlockDom(response.blockID, response.avID);
+    try {
+        await transactionApi.performTransactions(client, [{
+            doOperations: [{
+                action: 'insert',
+                id: response.blockID,
+                data: dom,
+                previousID: insertedAfter,
+            }],
+            undoOperations: [{
+                action: 'delete',
+                id: response.blockID,
+                data: null,
+            }],
+        }]);
+    } catch (error) {
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    error: {
+                        type: 'internal_error',
+                        tool: AV_TOOL_NAME,
+                        action: 'duplicate_block',
+                        reason: 'duplicate_insert_failed',
+                        message: normalized.message,
+                        sourceAvID: parsed.avID,
+                        duplicatedAvID: response.avID,
+                        duplicatedBlockID: response.blockID,
+                        insertedAfter,
+                        hint: 'The duplicate AV definition was prepared, but MCP failed while inserting the duplicated database block into the document tree.',
+                    },
+                }, null, 2),
+            }],
+            isError: true,
+        };
+    }
+
+    const blockExists = await blockApi.checkBlockExist(client, response.blockID);
+    let avReadable = false;
+    let verificationMessage: string | undefined;
+    try {
+        const verification = await ensurePermissionForAvId(client, permMgr, response.avID, 'read');
+        avReadable = !verification.denied;
+    } catch (error) {
+        verificationMessage = error instanceof Error ? error.message : String(error);
+    }
+
+    if (!blockExists || !avReadable) {
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    error: {
+                        type: 'internal_error',
+                        tool: AV_TOOL_NAME,
+                        action: 'duplicate_block',
+                        reason: 'duplicate_insert_verification_failed',
+                        message: `Duplicated AV insertion finished, but MCP could not verify the materialized result for block "${response.blockID}".`,
+                        sourceAvID: parsed.avID,
+                        duplicatedAvID: response.avID,
+                        duplicatedBlockID: response.blockID,
+                        insertedAfter,
+                        verification: {
+                            duplicatedBlockExists: blockExists,
+                            duplicatedAvReadable: avReadable,
+                            ...(verificationMessage ? { duplicatedAvReadableMessage: verificationMessage } : {}),
+                        },
+                        hint: 'The duplicate AV definition was inserted, but the resulting AV/block could not be verified. Check the target document tree and duplicated AV state.',
+                    },
+                }, null, 2),
+            }],
+            isError: true,
+        };
+    }
+
     return createWriteSuccessResult({
         action: 'duplicate_block',
         sourceAvID: parsed.avID,
-        verified: true,
+        prepared: true,
+        materialized: true,
+        duplicatedAvReadable: true,
+        insertedAfter,
+        semantics: parsed.previousID ? 'duplicated_and_inserted_with_override' : 'duplicated_and_inserted',
     }, response);
 }
 

@@ -31,7 +31,7 @@ function getShopItem(itemId: string) {
 export const MASCOT_VARIANTS: ActionVariant<MascotAction>[] = [
     {
         action: 'get_balance',
-        schema: createActionSchema('get_balance', {}, [], 'Get the mascot balance.'),
+        schema: createActionSchema('get_balance', {}, [], 'Get the mascot balance. Every successful MCP tool call earns 1 coin.'),
     },
     {
         action: 'shop',
@@ -48,7 +48,7 @@ export const MASCOT_VARIANTS: ActionVariant<MascotAction>[] = [
 export function listMascotTools(config: CategoryToolConfig<MascotAction>) {
     return buildAggregatedTool(
         MASCOT_TOOL_NAME,
-        '🐾 Grouped mascot balance and care operations.',
+        '🐾 Grouped mascot balance and care operations. Every successful MCP tool call earns 1 coin for the mascot.',
         config,
         MASCOT_VARIANTS,
         {

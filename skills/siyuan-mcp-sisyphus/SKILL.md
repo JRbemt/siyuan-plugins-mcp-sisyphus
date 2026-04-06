@@ -86,9 +86,10 @@ When operating SiYuan attribute views (`av`), prefer this workflow:
 
 - `add_rows` does **not** create brand-new database rows from scratch; it binds **existing block IDs** into the database. Always create the source document/block first, then pass its `blockID` via `blockIDs`.
 - AV row identity is not the same as the source block identity:
-  - `blockID`: original document/block ID
-  - `itemId` / row `id`: the row binding ID inside the database
-- For cell updates, use the AV row ID (`itemId` / row `id`), **not** the original `blockID`.
+  - `block.id`: original document/block ID
+  - `blockID`: the row binding ID (`itemID`) inside the database
+  - `id`: the cell value ID, not the row ID
+- For cell updates, use the AV row item ID stored in `value.blockID`, **not** `value.id` and **not** the bound source `block.id`.
 
 ### Parameter gotchas
 
@@ -98,11 +99,11 @@ When operating SiYuan attribute views (`av`), prefer this workflow:
 
 ### Practical notes
 
-- After `add_rows`, prefer the returned `rows[{ blockID, rowID }]` mapping directly.
+- After `add_rows`, prefer the returned `rows[{ blockID, rowID }]` mapping directly; MCP only reports success after it can observe those writable `rowID`s.
 - If you need to re-read manually, call `av(action="get")` to map each row binding back to its source block:
-  - inspect `keyValues[].values[].blockID` for the bound source block
-  - use the returned row `id` / `itemId` for later `set_cell`
-- `set_cell` / `batch_set_cells` now reject source `blockID`s and return a suggested `rowID` when MCP can detect the mismatch.
+  - inspect `keyValues[].values[].block.id` for the bound source block
+  - inspect `keyValues[].values[].blockID` for the writable row item ID
+- `set_cell` / `batch_set_cells` reject cell `value.id` and source `block.id`, and return a suggested writable `rowID` when MCP can detect the mismatch.
 - Date values should use ISO strings, for example `2026-04-06T00:00:00+08:00`.
 
 ### Minimal examples

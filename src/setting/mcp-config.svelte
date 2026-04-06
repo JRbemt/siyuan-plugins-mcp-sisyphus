@@ -178,7 +178,7 @@
             icon: "🐾",
             groupKey: "Mascot Tool",
             actions: [
-                { key: "get_balance", title: "Get Balance", description: "Get the mascot's current balance." },
+                { key: "get_balance", title: "Get Balance", description: "Get the mascot's current balance. Every successful MCP tool call earns 1 coin." },
                 { key: "shop", title: "Shop", description: "List the mascot shop inventory." },
                 { key: "buy", title: "Buy", description: "Buy one item from the mascot shop by item ID." },
             ],
