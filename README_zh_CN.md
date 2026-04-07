@@ -76,6 +76,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 
 ## 版本时间线
 
+- `v0.1.16`：新增 UI 自动刷新机制，优化数据库块操作语义与 ID 处理，补充调试脚本与回归测试
 - `v0.1.15`：厘清 AV 行 ID / value ID / 源块 ID 语义，补强 `mAsset` 与数据库复制写链路，并同步刷新 mascot 与回归测试文档
 - `v0.1.14`：新增 `ai-layout-guide` 帮助资源，补强思源笔记布局、标签、书签与闪卡语义指引，并同步刷新 8 个聚合 tool 的冒烟测试覆盖
 - `v0.1.13`：统一要求走标准 token 鉴权请求，自动清理 `SIYUAN_API_URL` 尾部斜杠，并修复空响应导致的 JSON 解析报错

@@ -76,6 +76,7 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 
 ## Timeline
 
+- `v0.1.16`: Adds automatic UI refresh after mutations, improves AV write semantics and ID handling, and adds debugging helpers plus regression tests
 - `v0.1.15`: Clarifies AV row/value identity, adds stronger AV write semantics for `mAsset` and duplicate-block flows, and refreshes mascot plus regression docs/tests
 - `v0.1.14`: Adds an `ai-layout-guide` help resource, teaches better SiYuan layout semantics for notes, tags, bookmarks, and flashcards, and refreshes smoke coverage for the 8-tool surface
 - `v0.1.13`: Requires standard token-authenticated SiYuan requests, trims trailing slashes from `SIYUAN_API_URL`, and fixes empty-response JSON parse failures
