@@ -4,11 +4,12 @@
 
 > 推荐搭配：[AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge)。如果你想把 OpenCode、kimi Code 等有 Web 端的工具直接嵌进思源侧边栏使用，这两个插件一起用会更顺手。
 
-这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`file`、`search`、`tag`、`system`、`mascot` 八个聚合工具。配合 `none / r / rw / rwd` 四态权限模型、高危操作二次确认机制、持续打磨的 tool 行为一致性，以及轻量的猫猫交互反馈，它在简化 AI 调用路径的同时，也让自动化链路更稳定、权限管理更细腻。
+这是一款为思源笔记打造的 MCP 服务器插件，以「渐进式披露」为设计哲学，将常用能力收敛为 `notebook`、`document`、`block`、`av`、`file`、`search`、`tag`、`system`、`mascot` 九个聚合工具。配合 `none / r / rw / rwd` 四态权限模型、高危操作二次确认机制、持续打磨的 tool 行为一致性，以及轻量的猫猫交互反馈，它在简化 AI 调用路径的同时，也让自动化链路更稳定、权限管理更细腻。
 
 - `notebook`
 - `document`
 - `block`
+- `av`
 - `file`
 - `search`
 - `tag`
@@ -56,7 +57,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 ## 功能特性
 
 - 完整覆盖笔记本、文档、块、资源、导出和通知相关的思源 API
-- 对外工具面收敛为 8 个聚合 tool，减少模型选错 tool 的概率
+- 对外工具面收敛为 9 个聚合 tool，减少模型选错 tool 的概率
 - 持续优化参数语义、返回结构与帮助提示，降低 MCP 客户端接入成本
 - 插件设置仍保留到 action 级别的开关。默认 fallback 配置里，删除类 action 不暴露，移动类 action 仍暴露但必须先确认。
 - 支持按笔记本 / 文档查询直属子文档与直属子块
@@ -71,7 +72,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 - `r`：只允许读，所有写和删除操作都应被拒绝
 - `none`：禁止所有读、写、删除
 - `notebook(action="set_permission")` 设置后，会立即影响后续的 `notebook`、`document`、`block` 调用
-- AI 做回归时，建议一开始先把 8 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
+- AI 做回归时，建议一开始先把 9 个 tool 都预热调用一次，避免中途首次弹授权卡住流程
 
 ## 版本时间线
 
@@ -216,6 +217,23 @@ OpenClaw / mcporter 用户可参考 [SKILL.md](https://github.com/yangtaihong59/
 | `dom` | 获取块的渲染 DOM |
 | `recent_updated` | 列出最近更新内容，默认突出文档级摘要，并按笔记本权限过滤且支持 `count` 截断 |
 | `word_count` | 获取块的字数统计 |
+
+### `av`
+
+| Action | 说明 |
+|--------|------|
+| `get` | 按 `id` 读取一个真实属性视图（数据库），并经过权限校验 |
+| `search` | 按关键词搜索属性视图，并对不可读或无法解析归属的结果做后置过滤 |
+| `add_rows` | 将已有块绑定为数据库行，并在解析成功时返回可写 `rowID` 映射 |
+| `remove_rows` | 从属性视图中移除已绑定的行 |
+| `add_column` | 新增数据库列，支持 `text`、`number`、`mSelect`、`mAsset`、`lineNumber` 等类型 |
+| `remove_column` | 删除属性视图中的一列 |
+| `set_cell` | 用强类型参数更新单个单元格；写入时应使用 `value.blockID` 中保存的 AV 行 item ID |
+| `batch_set_cells` | 批量更新多个单元格；若传入源块 ID 或 value ID 而不是可写行 ID，会直接拒绝 |
+| `duplicate_block` | 复制底层数据库块，并把复制出的数据库块插入到文档树中的合适位置 |
+| `get_primary_key_values` | 获取属性视图主键列对应的行数据，支持关键词过滤与分页 |
+
+AV 说明：这个工具操作的是真实的思源属性视图（数据库块），不是 Markdown 表格。MCP 可以把已有块绑定为数据库行，但不能凭空新建一个全新的真实数据库。写入时要明确区分三类 ID：`block.id` 是绑定的源块 ID，`blockID` 是可写的 AV 行 item ID，`id` 只是单元格 value ID。
 
 ### `file`
 

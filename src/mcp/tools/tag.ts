@@ -10,6 +10,7 @@ import {
     TagRenameSchema,
 } from '../types';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
+import { applyUiRefresh } from './ui-refresh';
 
 export const TAG_TOOL_NAME = 'tag';
 
@@ -77,12 +78,12 @@ export async function callTagTool(
             case 'rename': {
                 const parsed = TagRenameSchema.parse(rawArgs);
                 await tagApi.renameTag(client, parsed.oldLabel, parsed.newLabel);
-                return createJsonResult({ success: true, oldLabel: parsed.oldLabel, newLabel: parsed.newLabel });
+                return applyUiRefresh(client, createJsonResult({ success: true, oldLabel: parsed.oldLabel, newLabel: parsed.newLabel }), [{ type: 'reloadTag' }]);
             }
             case 'remove': {
                 const parsed = TagRemoveSchema.parse(rawArgs);
                 await tagApi.removeTag(client, parsed.label);
-                return createJsonResult({ success: true, label: parsed.label });
+                return applyUiRefresh(client, createJsonResult({ success: true, label: parsed.label }), [{ type: 'reloadTag' }]);
             }
             default: {
                 const _exhaustive: never = parsedAction;

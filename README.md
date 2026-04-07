@@ -4,11 +4,12 @@
 
 > Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenCode, Claude Code, and other AI CLI tools directly in the SiYuan sidebar.
 
-A SiYuan Note MCP server plugin built around progressive disclosure — exposing eight aggregated tools: `notebook`, `document`, `block`, `file`, `search`, `tag`, `system`, and `mascot`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`), mandatory confirmation gates on high-risk actions, steadily refined tool behavior, and a lightweight mascot feedback loop, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
+A SiYuan Note MCP server plugin built around progressive disclosure — exposing nine aggregated tools: `notebook`, `document`, `block`, `av`, `file`, `search`, `tag`, `system`, and `mascot`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`), mandatory confirmation gates on high-risk actions, steadily refined tool behavior, and a lightweight mascot feedback loop, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
 
 - `notebook`
 - `document`
 - `block`
+- `av`
 - `file`
 - `search`
 - `tag`
@@ -56,7 +57,7 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 ## Features
 
 - Full SiYuan API coverage for notebooks, documents, blocks, assets, export, and notifications
-- A smaller MCP surface: 8 grouped tools instead of dozens of endpoint-level tools
+- A smaller MCP surface: 9 grouped tools instead of dozens of endpoint-level tools
 - Clearer parameter semantics, result shapes, and help messages for smoother MCP client integration
 - Action-level toggles in the plugin settings. In the default fallback config, delete-style actions are disabled while move actions stay enabled and confirmation-gated.
 - Notebook- and document-level tree queries for direct child documents and blocks
@@ -71,7 +72,7 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 - `r`: read access only; all write and delete actions are rejected
 - `none`: no read, write, or delete access
 - `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
-- For AI regression runs, preheat all 8 tools early so permission prompts do not interrupt the middle of a test
+- For AI regression runs, preheat all 9 tools early so permission prompts do not interrupt the middle of a test
 
 ## Timeline
 
@@ -216,6 +217,23 @@ Cover semantics: `set_cover` and `clear_cover` are semantic wrappers around the 
 | `dom` | Get rendered DOM for a block |
 | `recent_updated` | List recent updates with document-first summaries, filtered by notebook permission and optional `count` |
 | `word_count` | Get word-count statistics for blocks |
+
+### `av`
+
+| Action | Description |
+|--------|-------------|
+| `get` | Get one attribute view (database) by `id` after permission checks |
+| `search` | Search attribute views by keyword and post-filter unreadable or unresolved results |
+| `add_rows` | Bind existing blocks into a database as rows and return writable `rowID` mappings when resolved |
+| `remove_rows` | Remove bound rows from an attribute view |
+| `add_column` | Add a supported database column such as `text`, `number`, `mSelect`, `mAsset`, or `lineNumber` |
+| `remove_column` | Remove one column from an attribute view |
+| `set_cell` | Update one database cell with a strongly typed payload; use the AV row item ID stored in `value.blockID` |
+| `batch_set_cells` | Update multiple cells in one call and reject source block IDs or value IDs when they are not writable row IDs |
+| `duplicate_block` | Duplicate the underlying database block and insert the duplicate into the document tree near the source block |
+| `get_primary_key_values` | List primary-key rows for an attribute view, with optional keyword and pagination filters |
+
+AV notes: this tool operates on real SiYuan attribute views rather than Markdown tables. MCP can bind existing blocks as rows, but it does not create a brand-new database from scratch. For writes, distinguish three identities carefully: `block.id` is the bound source block ID, `blockID` is the writable AV row item ID, and `id` is only the cell value ID.
 
 ### `file`
 

@@ -23,3 +23,23 @@ export async function getSysFonts(client: SiYuanClient): Promise<unknown> {
 export async function getBootProgress(client: SiYuanClient): Promise<{ progress: number; details: string }> {
     return client.request<{ progress: number; details: string }>('/api/system/bootProgress', {});
 }
+
+export async function reloadUI(client: SiYuanClient): Promise<null> {
+    return client.request<null>('/api/ui/reloadUI', {});
+}
+
+export async function reloadFiletree(client: SiYuanClient): Promise<null> {
+    return client.request<null>('/api/ui/reloadFiletree', {});
+}
+
+export async function reloadProtyle(client: SiYuanClient, id: string): Promise<null> {
+    return client.request<null>('/api/ui/reloadProtyle', { id });
+}
+
+export async function reloadAttributeView(client: SiYuanClient, id: string): Promise<null> {
+    return client.request<null>('/api/ui/reloadAttributeView', { id });
+}
+
+export async function reloadTag(client: SiYuanClient): Promise<null> {
+    return client.request<null>('/api/ui/reloadTag', {});
+}

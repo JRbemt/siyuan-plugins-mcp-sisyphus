@@ -35,6 +35,7 @@ import {
 } from './context';
 import { filterBacklinkResultByPermission, filterItemsByPermissionAndPath } from './search';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createPermissionDeniedResult, createSetIconReminder, paginate, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
+import { applyUiRefresh } from './ui-refresh';
 
 export const DOCUMENT_TOOL_NAME = 'document';
 
@@ -413,45 +414,63 @@ const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     if (parsed.icon) {
         await attributeApi.setBlockAttrs(client, docId, { icon: parsed.icon });
     }
-    return createJsonResult({
+    return applyUiRefresh(client, createJsonResult({
         success: true,
         notebook: parsed.notebook,
         path: parsed.path,
         id: docId,
         iconHint: createSetIconReminder('document', Boolean(parsed.icon)),
-    });
+    }), [
+        { type: 'reloadProtyle', id: docId },
+        { type: 'reloadFiletree' },
+    ]);
 };
 
 const handleRename: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentRenameSchema.parse(rawArgs);
     if (parsed.id) {
-        const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+        const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
         if (denied) return denied;
         await documentApi.renameDocByID(client, parsed.id, parsed.title);
-        return createJsonResult({ success: true, id: parsed.id, title: parsed.title });
+        return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, title: parsed.title }), [
+            { type: 'reloadProtyle', id: context.documentId },
+            { type: 'reloadFiletree' },
+        ]);
     }
     if (parsed.notebook) {
         const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
         if (denied) return denied;
     }
     await documentApi.renameDoc(client, parsed.notebook!, parsed.path!, parsed.title);
-    return createJsonResult({ success: true, notebook: parsed.notebook, path: parsed.path, title: parsed.title });
+    return applyUiRefresh(client, createJsonResult({
+        success: true,
+        notebook: parsed.notebook,
+        path: parsed.path,
+        title: parsed.title,
+    }), [{ type: 'reloadFiletree' }]);
 };
 
 const handleRemove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentRemoveSchema.parse(rawArgs);
     if (parsed.id) {
-        const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
+        const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
         if (denied) return denied;
         await documentApi.removeDocByID(client, parsed.id);
-        return createJsonResult({ success: true, id: parsed.id });
+        return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id }), [
+            { type: 'reloadProtyle', id: context.documentId },
+            { type: 'reloadFiletree' },
+        ]);
     }
     if (parsed.notebook) {
         const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'delete');
         if (denied) return denied;
     }
     await documentApi.removeDoc(client, parsed.notebook!, parsed.path!);
-    return createJsonResult({ success: true, notebook: parsed.notebook, path: parsed.path });
+    return applyUiRefresh(client, createJsonResult({
+        success: true,
+        notebook: parsed.notebook,
+        path: parsed.path,
+    }), [{ type: 'reloadFiletree' }]);
 };
 
 const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
@@ -466,12 +485,17 @@ const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) =
         if (denied) return denied;
     }
     if (parsed.fromIDs) {
+        const sourceDocumentIDs: string[] = [];
         for (const id of parsed.fromIDs) {
-            const { denied } = await ensurePermissionForDocumentId(client, permMgr, id, 'write');
+            const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, id, 'write');
             if (denied) return denied;
+            sourceDocumentIDs.push(context.documentId);
         }
         await documentApi.moveDocsByID(client, parsed.fromIDs, parsed.toID!);
-        return createJsonResult({ success: true, fromIDs: parsed.fromIDs, toID: parsed.toID });
+        return applyUiRefresh(client, createJsonResult({ success: true, fromIDs: parsed.fromIDs, toID: parsed.toID }), [
+            ...sourceDocumentIDs.map((id) => ({ type: 'reloadProtyle' as const, id })),
+            { type: 'reloadFiletree' },
+        ]);
     }
     for (const sourcePath of parsed.fromPaths!) {
         const sourceNotebook = await resolveNotebookForPath(client, sourcePath);
@@ -482,7 +506,12 @@ const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) =
         if (denied) return denied;
     }
     await documentApi.moveDocs(client, parsed.fromPaths!, parsed.toNotebook!, parsed.toPath!);
-    return createJsonResult({ success: true, fromPaths: parsed.fromPaths, toNotebook: parsed.toNotebook, toPath: parsed.toPath });
+    return applyUiRefresh(client, createJsonResult({
+        success: true,
+        fromPaths: parsed.fromPaths,
+        toNotebook: parsed.toNotebook,
+        toPath: parsed.toPath,
+    }), [{ type: 'reloadFiletree' }]);
 };
 
 const handleGetPath: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
@@ -535,32 +564,32 @@ const handleGetChildDocs: DocumentActionHandler = async ({ client, permMgr, rawA
 
 const handleSetIcon: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentSetIconSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     await attributeApi.setBlockAttrs(client, parsed.id, { icon: parsed.icon });
-    return createJsonResult({ success: true, id: parsed.id, icon: parsed.icon });
+    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, icon: parsed.icon }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleSetCover: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentSetCoverSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     const normalized = normalizeDocumentCoverSource(parsed.source);
     await attributeApi.setBlockAttrs(client, parsed.id, { 'title-img': normalized.titleImg });
-    return createJsonResult({
+    return applyUiRefresh(client, createJsonResult({
         success: true,
         id: parsed.id,
         source: normalized.source,
         titleImg: normalized.titleImg,
-    });
+    }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleClearCover: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentClearCoverSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     await attributeApi.setBlockAttrs(client, parsed.id, { 'title-img': '' });
-    return createJsonResult({ success: true, id: parsed.id, cleared: true });
+    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, cleared: true }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleListTree: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
@@ -647,13 +676,16 @@ const handleCreateDailyNote: DocumentActionHandler = async ({ client, permMgr, r
     } catch {
         hPath = undefined;
     }
-    return createJsonResult({
+    return applyUiRefresh(client, createJsonResult({
         success: true,
         notebook: parsed.notebook,
         ...result,
         ...(hPath ? { hPath } : {}),
         iconHint: createSetIconReminder('document'),
-    });
+    }), [
+        { type: 'reloadProtyle', id: result.id },
+        { type: 'reloadFiletree' },
+    ]);
 };
 
 const DOCUMENT_ACTION_HANDLERS: Record<DocumentAction, DocumentActionHandler> = {

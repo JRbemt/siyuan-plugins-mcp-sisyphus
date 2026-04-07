@@ -30,6 +30,7 @@ import {
 import { createResultResolutionCache, ensurePermissionForDocumentId, resolveDocumentContextById, resolveResultItemContext } from './context';
 import { filterItemsByPermission } from './search';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, paginate, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
+import { applyUiRefresh } from './ui-refresh';
 
 export const BLOCK_TOOL_NAME = 'block';
 
@@ -359,50 +360,64 @@ type BlockActionHandler = (ctx: BlockHandlerContext) => Promise<ToolResult>;
 const handleInsert: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockInsertSchema.parse(rawArgs);
     const refId = parsed.nextID || parsed.previousID || parsed.parentID;
+    let targetDocumentId: string | undefined;
     if (refId) {
-        const { denied } = await ensurePermissionForDocumentId(client, permMgr, refId, 'write');
+        const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, refId, 'write');
         if (denied) return denied;
+        targetDocumentId = context.documentId;
     }
     const result = await blockApi.insertBlock(client, parsed.dataType, parsed.data, parsed.nextID, parsed.previousID, parsed.parentID);
-    return createSlimWriteResult(result, {
+    return applyUiRefresh(client, createSlimWriteResult(result, {
         action: 'insert',
         dataType: parsed.dataType,
         parentID: parsed.parentID,
         previousID: parsed.previousID,
         nextID: parsed.nextID,
-    });
+    }), targetDocumentId ? [{ type: 'reloadProtyle', id: targetDocumentId }] : []);
 };
 
 const handlePrepend: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockPrependSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
     const result = await blockApi.prependBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-    return createSlimWriteResult(result, { action: 'prepend', dataType: parsed.dataType, parentID: parsed.parentID });
+    return applyUiRefresh(client, createSlimWriteResult(result, {
+        action: 'prepend',
+        dataType: parsed.dataType,
+        parentID: parsed.parentID,
+    }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleAppend: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockAppendSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
     const result = await blockApi.appendBlock(client, parsed.dataType, parsed.data, parsed.parentID);
-    return createSlimWriteResult(result, { action: 'append', dataType: parsed.dataType, parentID: parsed.parentID });
+    return applyUiRefresh(client, createSlimWriteResult(result, {
+        action: 'append',
+        dataType: parsed.dataType,
+        parentID: parsed.parentID,
+    }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockUpdateSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     const result = await blockApi.updateBlock(client, parsed.dataType, parsed.data, parsed.id);
-    return createUpdateResult(result, { id: parsed.id, dataType: parsed.dataType, data: parsed.data });
+    return applyUiRefresh(client, createUpdateResult(result, {
+        id: parsed.id,
+        dataType: parsed.dataType,
+        data: parsed.data,
+    }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleDelete: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockDeleteSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'delete');
     if (denied) return denied;
     await blockApi.deleteBlock(client, parsed.id);
-    return createJsonResult({ success: true, id: parsed.id });
+    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleMove: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
@@ -418,27 +433,38 @@ const handleMove: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
         if (sibling.denied) return sibling.denied;
     }
     const result = await blockApi.moveBlock(client, parsed.id, parsed.previousID, parsed.parentID);
-    return createWriteSuccessResult({
+    const operations = [{ type: 'reloadProtyle' as const, id: source.context.documentId }];
+    if (parsed.parentID) {
+        const destination = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+        if (destination.denied) return destination.denied;
+        operations.push({ type: 'reloadProtyle', id: destination.context.documentId });
+    }
+    if (parsed.previousID) {
+        const sibling = await ensurePermissionForDocumentId(client, permMgr, parsed.previousID, 'write');
+        if (sibling.denied) return sibling.denied;
+        operations.push({ type: 'reloadProtyle', id: sibling.context.documentId });
+    }
+    return applyUiRefresh(client, createWriteSuccessResult({
         id: parsed.id,
         ...(parsed.previousID ? { previousID: parsed.previousID } : {}),
         ...(parsed.parentID ? { parentID: parsed.parentID } : {}),
-    }, result);
+    }, result), operations);
 };
 
 const handleFold: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockFoldSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     await blockApi.foldBlock(client, parsed.id);
-    return createJsonResult({ success: true, id: parsed.id });
+    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleUnfold: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockUnfoldSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     await blockApi.unfoldBlock(client, parsed.id);
-    return createJsonResult({ success: true, id: parsed.id });
+    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleGetKramdown: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
@@ -478,15 +504,18 @@ const handleTransferRef: BlockActionHandler = async ({ client, permMgr, rawArgs 
     const target = await ensurePermissionForDocumentId(client, permMgr, parsed.toID, 'write');
     if (target.denied) return target.denied;
     await blockApi.transferBlockRef(client, parsed.fromID, parsed.toID, parsed.refIDs);
-    return createJsonResult({ success: true, fromID: parsed.fromID, toID: parsed.toID });
+    return applyUiRefresh(client, createJsonResult({ success: true, fromID: parsed.fromID, toID: parsed.toID }), [
+        { type: 'reloadProtyle', id: source.context.documentId },
+        { type: 'reloadProtyle', id: target.context.documentId },
+    ]);
 };
 
 const handleSetAttrs: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockSetAttrsSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     await attributeApi.setBlockAttrs(client, parsed.id, parsed.attrs);
-    return createJsonResult({ success: true, id: parsed.id, attrs: parsed.attrs });
+    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, attrs: parsed.attrs }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
 const handleGetAttrs: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {

@@ -20,6 +20,7 @@ import {
 } from '../types';
 import { ensurePermissionForNotebook, listChildDocumentsByPath } from './context';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createSetIconReminder, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
+import { applyUiRefresh } from './ui-refresh';
 
 export const NOTEBOOK_TOOL_NAME = 'notebook';
 
@@ -231,38 +232,38 @@ export async function callNotebookTool(
                     await notebookApi.setNotebookIcon(client, result.notebook.id, parsed.icon);
                     result.notebook.icon = parsed.icon;
                 }
-                return createJsonResult({
+                return applyUiRefresh(client, createJsonResult({
                     ...result.notebook,
                     iconHint: createSetIconReminder('notebook', Boolean(parsed.icon)),
-                });
+                }), [{ type: 'reloadFiletree' }]);
             }
             case 'open': {
                 const parsed = NotebookOpenSchema.parse(rawArgs);
                 const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
                 if (denied) return denied;
                 await notebookApi.openNotebook(client, parsed.notebook);
-                return createJsonResult({ success: true, notebook: parsed.notebook });
+                return applyUiRefresh(client, createJsonResult({ success: true, notebook: parsed.notebook }), [{ type: 'reloadFiletree' }]);
             }
             case 'close': {
                 const parsed = NotebookCloseSchema.parse(rawArgs);
                 const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
                 if (denied) return denied;
                 await notebookApi.closeNotebook(client, parsed.notebook);
-                return createJsonResult({ success: true, notebook: parsed.notebook });
+                return applyUiRefresh(client, createJsonResult({ success: true, notebook: parsed.notebook }), [{ type: 'reloadFiletree' }]);
             }
             case 'remove': {
                 const parsed = NotebookRemoveSchema.parse(rawArgs);
                 const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'delete');
                 if (denied) return denied;
                 await notebookApi.removeNotebook(client, parsed.notebook);
-                return createJsonResult({ success: true, notebook: parsed.notebook });
+                return applyUiRefresh(client, createJsonResult({ success: true, notebook: parsed.notebook }), [{ type: 'reloadFiletree' }]);
             }
             case 'rename': {
                 const parsed = NotebookRenameSchema.parse(rawArgs);
                 const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
                 if (denied) return denied;
                 await notebookApi.renameNotebook(client, parsed.notebook, parsed.name);
-                return createJsonResult({ success: true, notebook: parsed.notebook, name: parsed.name });
+                return applyUiRefresh(client, createJsonResult({ success: true, notebook: parsed.notebook, name: parsed.name }), [{ type: 'reloadFiletree' }]);
             }
             case 'get_conf': {
                 const parsed = NotebookGetConfSchema.parse(rawArgs);
@@ -276,14 +277,14 @@ export async function callNotebookTool(
                 const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
                 if (denied) return denied;
                 const result = await notebookApi.setNotebookConf(client, parsed.notebook, parsed.conf);
-                return createJsonResult(result);
+                return applyUiRefresh(client, createJsonResult(result), [{ type: 'reloadFiletree' }]);
             }
             case 'set_icon': {
                 const parsed = NotebookSetIconSchema.parse(rawArgs);
                 const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'write');
                 if (denied) return denied;
                 await notebookApi.setNotebookIcon(client, parsed.notebook, parsed.icon);
-                return createJsonResult({ success: true, notebook: parsed.notebook, icon: parsed.icon });
+                return applyUiRefresh(client, createJsonResult({ success: true, notebook: parsed.notebook, icon: parsed.icon }), [{ type: 'reloadFiletree' }]);
             }
             case 'get_permissions': {
                 const parsed = NotebookGetPermissionsSchema.parse(rawArgs);
@@ -311,7 +312,7 @@ export async function callNotebookTool(
             case 'set_permission': {
                 const parsed = NotebookSetPermissionSchema.parse(rawArgs);
                 await permMgr.set(parsed.notebook, parsed.permission);
-                return createJsonResult({ success: true, notebook: parsed.notebook, permission: parsed.permission });
+                return applyUiRefresh(client, createJsonResult({ success: true, notebook: parsed.notebook, permission: parsed.permission }), [{ type: 'reloadFiletree' }]);
             }
             case 'get_child_docs': {
                 const parsed = NotebookGetChildDocsSchema.parse(rawArgs);

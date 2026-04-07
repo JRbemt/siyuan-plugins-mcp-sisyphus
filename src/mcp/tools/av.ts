@@ -21,6 +21,7 @@ import {
 import { createResultResolutionCache, ensurePermissionForDocumentId, resolveDocumentContextById, resolveResultItemContext } from './context';
 import { isMissingBlockError } from './block';
 import { buildAggregatedTool, createActionSchema, createDisabledActionResult, createErrorResult, createJsonResult, createWriteSuccessResult, tryHandleHelpAction, type ActionVariant, type ToolResult } from './shared';
+import { applyUiRefresh } from './ui-refresh';
 
 export const AV_TOOL_NAME = 'av';
 
@@ -821,13 +822,13 @@ async function handleAddRows({ client, permMgr, rawArgs }: AvHandlerContext): Pr
         return createAddRowsSyncTimeoutResult(parsed.avID, parsed.blockIDs, resolution);
     }
 
-    return createWriteSuccessResult({
+    return applyUiRefresh(client, createWriteSuccessResult({
         action: 'add_rows',
         avID: parsed.avID,
         blockIDs: parsed.blockIDs,
         rows: resolution.rows,
         added: parsed.blockIDs.length,
-    });
+    }), [{ type: 'reloadAttributeView', id: parsed.avID }]);
 }
 
 async function handleRemoveRows({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
@@ -836,12 +837,12 @@ async function handleRemoveRows({ client, permMgr, rawArgs }: AvHandlerContext):
     if (denied) return denied;
 
     await avApi.removeAttributeViewBlocks(client, parsed.avID, parsed.srcIDs);
-    return createWriteSuccessResult({
+    return applyUiRefresh(client, createWriteSuccessResult({
         action: 'remove_rows',
         avID: parsed.avID,
         srcIDs: parsed.srcIDs,
         removed: parsed.srcIDs.length,
-    });
+    }), [{ type: 'reloadAttributeView', id: parsed.avID }]);
 }
 
 async function handleAddColumn({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
@@ -854,13 +855,13 @@ async function handleAddColumn({ client, permMgr, rawArgs }: AvHandlerContext): 
         ...parsed,
         keyID,
     });
-    return createWriteSuccessResult({
+    return applyUiRefresh(client, createWriteSuccessResult({
         action: 'add_column',
         avID: parsed.avID,
         keyID,
         keyName: parsed.keyName,
         keyType: parsed.keyType,
-    });
+    }), [{ type: 'reloadAttributeView', id: parsed.avID }]);
 }
 
 async function handleRemoveColumn({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
@@ -870,12 +871,12 @@ async function handleRemoveColumn({ client, permMgr, rawArgs }: AvHandlerContext
     const keyID = parsed.keyID ?? parsed.columnID!;
 
     await avApi.removeAttributeViewKey(client, parsed.avID, keyID, parsed.removeRelationDest);
-    return createWriteSuccessResult({
+    return applyUiRefresh(client, createWriteSuccessResult({
         action: 'remove_column',
         avID: parsed.avID,
         keyID,
         removeRelationDest: parsed.removeRelationDest ?? false,
-    });
+    }), [{ type: 'reloadAttributeView', id: parsed.avID }]);
 }
 
 async function handleSetCell({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
@@ -893,13 +894,13 @@ async function handleSetCell({ client, permMgr, rawArgs }: AvHandlerContext): Pr
         value,
     });
 
-    return createWriteSuccessResult({
+    return applyUiRefresh(client, createWriteSuccessResult({
         action: 'set_cell',
         avID: parsed.avID,
         rowID: parsed.rowID,
         columnID: parsed.columnID,
         valueType: parsed.valueType,
-    }, response);
+    }, response), [{ type: 'reloadAttributeView', id: parsed.avID }]);
 }
 
 async function handleBatchSetCells({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
@@ -917,11 +918,11 @@ async function handleBatchSetCells({ client, permMgr, rawArgs }: AvHandlerContex
     }
     await avApi.batchSetAttributeViewBlockAttrs(client, parsed.avID, values);
 
-    return createWriteSuccessResult({
+    return applyUiRefresh(client, createWriteSuccessResult({
         action: 'batch_set_cells',
         avID: parsed.avID,
         updated: parsed.items.length,
-    });
+    }), [{ type: 'reloadAttributeView', id: parsed.avID }]);
 }
 
 async function handleDuplicateBlock({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
@@ -1054,7 +1055,7 @@ async function handleDuplicateBlock({ client, permMgr, rawArgs }: AvHandlerConte
         };
     }
 
-    return createWriteSuccessResult({
+    return applyUiRefresh(client, createWriteSuccessResult({
         action: 'duplicate_block',
         sourceAvID: parsed.avID,
         prepared: true,
@@ -1062,7 +1063,10 @@ async function handleDuplicateBlock({ client, permMgr, rawArgs }: AvHandlerConte
         duplicatedAvReadable: true,
         insertedAfter,
         semantics: parsed.previousID ? 'duplicated_and_inserted_with_override' : 'duplicated_and_inserted',
-    }, response);
+    }, response), [
+        { type: 'reloadAttributeView', id: response.avID },
+        { type: 'reloadProtyle', id: destination.context.documentId },
+    ]);
 }
 
 async function handleGetPrimaryKeyValues({ client, permMgr, rawArgs }: AvHandlerContext): Promise<ToolResult> {
