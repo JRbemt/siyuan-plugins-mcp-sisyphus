@@ -87,6 +87,14 @@ describe('MCP Server Integration', () => {
             expect(instructions).not.toContain('User custom rules override the general style and workflow suggestions below when they apply.');
         });
 
+        it('includes block update guidance for multi-line content', () => {
+            const instructions = buildServerInstructions('');
+
+            expect(instructions).toContain('block(action=”update”) is best for single-block replacement');
+            expect(instructions).toContain('Multi-line markdown may be truncated to the first line by SiYuan');
+            expect(instructions).toContain('block(action=”append”), prepend, or insert');
+        });
+
         it('should list tools with expected names', async () => {
             const { tools } = await client.listTools();
 

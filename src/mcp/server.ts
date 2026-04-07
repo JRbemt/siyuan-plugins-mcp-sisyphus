@@ -98,6 +98,7 @@ Additional rules:
 - block(action=”prepend”) with a document ID inserts at the start of the document.
 - block(action=”append”) with a document ID inserts at the end of the document.
 - With a block ID, prepend/append operate on that block's child list.
+- block(action=”update”) is best for single-block replacement. Multi-line markdown may be truncated to the first line by SiYuan; use block(action=”append”), prepend, or insert when you need multiple blocks, tables, or longer multi-line content.
 
 ## Tag creation semantics
 

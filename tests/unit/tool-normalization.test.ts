@@ -223,6 +223,47 @@ describe('tool result normalization', () => {
         expect(parsed.thresholdBytes).toBe(1024 * 1024);
     });
 
+    it('adds a warning when block.update receives multi-line markdown', async () => {
+        const blockApi = await import('@/api/block');
+        vi.mocked(blockApi.updateBlock).mockResolvedValue({ updated: 1 });
+
+        const result = await callBlockTool(client, {
+            action: 'update',
+            id: 'block-1',
+            dataType: 'markdown',
+            data: '# Title\n\n| A | B |\n| - | - |',
+        }, enabledActions('update'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            success: true,
+            id: 'block-1',
+            dataType: 'markdown',
+            markdown: '# Title\n\n| A | B |\n| - | - |',
+            updated: 1,
+            warning: 'block(update) is best for single-block replacement. Multi-line markdown may be truncated to the first line by SiYuan; use block(append), block(prepend), or block(insert) when you need multiple blocks or tables.',
+        });
+    });
+
+    it('keeps block.update clean for single-line markdown', async () => {
+        const blockApi = await import('@/api/block');
+        vi.mocked(blockApi.updateBlock).mockResolvedValue({ updated: 1 });
+
+        const result = await callBlockTool(client, {
+            action: 'update',
+            id: 'block-1',
+            dataType: 'markdown',
+            data: 'hello',
+        }, enabledActions('update'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            success: true,
+            id: 'block-1',
+            dataType: 'markdown',
+            markdown: 'hello',
+            updated: 1,
+        });
+    });
+
     it('returns a workspace-specific error for render_template paths outside the workspace', async () => {
         const fileApi = await import('@/api/file');
         vi.mocked(fileApi.renderTemplate).mockRejectedValue(new Error('Path [/tmp/siyuan.tpl] is not in workspace'));

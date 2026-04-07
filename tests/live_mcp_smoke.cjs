@@ -109,7 +109,13 @@ function makeSiYuanResponse(data, code = 0, msg = '') {
 }
 
 function unwrapWriteResult(value) {
-    return Array.isArray(value) ? value[0] : value;
+    const normalized = Array.isArray(value) ? value[0] : value;
+    if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) {
+        return normalized;
+    }
+
+    const { uiRefresh, warning, ...rest } = normalized;
+    return rest;
 }
 
 async function withConfigMode(mode, fn) {
@@ -208,6 +214,8 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /Common actions: .*get_children/);
         assert.match(descriptions.block, /Additional actions: .*move/);
         assert.match(descriptions.block, /Read siyuan:\/\/help\/action\/block\/\{action\} for details/);
+        assert.match(descriptions.block, /single-block replacement/i);
+        assert.match(descriptions.block, /Multi-line markdown may be truncated to the first line/i);
         assert.match(descriptions.av, /Common actions: get, search, get_primary_key_values/);
         assert.match(descriptions.av, /Additional actions: add_rows, remove_rows, add_column, remove_column, set_cell, batch_set_cells, duplicate_block/);
         assert.match(descriptions.av, /database/i);
@@ -648,23 +656,23 @@ async function runLiveSmoke() {
             })).json;
             assert.equal(attrs['custom-codex'], 'smoke');
 
-            const foldResult = (await callToolJson(client, 'block', {
+            const foldResult = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'fold',
                 id: appendBlockId,
-            })).json;
-            const unfoldResult = (await callToolJson(client, 'block', {
+            })).json);
+            const unfoldResult = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'unfold',
                 id: appendBlockId,
-            })).json;
+            })).json);
             assert.deepEqual(foldResult, { success: true, id: appendBlockId });
             assert.deepEqual(unfoldResult, { success: true, id: appendBlockId });
 
-            const moveBlockResult = (await callToolJson(client, 'block', {
+            const moveBlockResult = unwrapWriteResult((await callToolJson(client, 'block', {
                 action: 'move',
                 id: insertBlockId,
                 previousID: appendBlockId,
                 parentID: source.json.id,
-            })).json;
+            })).json);
             assert.deepEqual(moveBlockResult, {
                 success: true,
                 id: insertBlockId,
@@ -803,11 +811,11 @@ async function runLiveSmoke() {
 
             console.log('Search tool smoke passed');
 
-            const moveById = (await callToolJson(client, 'document', {
+            const moveById = unwrapWriteResult((await callToolJson(client, 'document', {
                 action: 'move',
                 fromIDs: [deleteDoc.json.id],
                 toID: target.json.id,
-            })).json;
+            })).json);
             assert.deepEqual(moveById, {
                 success: true,
                 fromIDs: [deleteDoc.json.id],
@@ -826,12 +834,12 @@ async function runLiveSmoke() {
                 id: target.json.id,
             })).json;
 
-            const moveByPath = (await callToolJson(client, 'document', {
+            const moveByPath = unwrapWriteResult((await callToolJson(client, 'document', {
                 action: 'move',
                 fromPaths: [pathMovePath.path],
                 toNotebook: notebookId,
                 toPath: targetPath.path,
-            })).json;
+            })).json);
             assert.deepEqual(moveByPath, {
                 success: true,
                 fromPaths: [pathMovePath.path],
@@ -845,11 +853,11 @@ async function runLiveSmoke() {
             })).json;
             assert.match(pathMoveAfterMoveByPath.path, new RegExp(`^${targetPath.path.replace(/\.sy$/, '')}/.+\\.sy$`));
 
-            const readonlyPerm = (await callToolJson(client, 'notebook', {
+            const readonlyPerm = unwrapWriteResult((await callToolJson(client, 'notebook', {
                 action: 'set_permission',
                 notebook: notebookId,
                 permission: 'r',
-            })).json;
+            })).json);
             assert.deepEqual(readonlyPerm, { success: true, notebook: notebookId, permission: 'r' });
 
             await assertPermissionDenied(client, 'document', {
@@ -904,11 +912,11 @@ async function runLiveSmoke() {
             });
             console.log('T20 PASS - r blocks all tested writes');
 
-            const nonePerm = (await callToolJson(client, 'notebook', {
+            const nonePerm = unwrapWriteResult((await callToolJson(client, 'notebook', {
                 action: 'set_permission',
                 notebook: notebookId,
                 permission: 'none',
-            })).json;
+            })).json);
             assert.deepEqual(nonePerm, { success: true, notebook: notebookId, permission: 'none' });
 
             await assertPermissionDenied(client, 'notebook', {
@@ -985,11 +993,11 @@ async function runLiveSmoke() {
             });
             console.log('T22 PASS - none blocks all tested reads and writes');
 
-            const writePerm = (await callToolJson(client, 'notebook', {
+            const writePerm = unwrapWriteResult((await callToolJson(client, 'notebook', {
                 action: 'set_permission',
                 notebook: notebookId,
                 permission: 'rwd',
-            })).json;
+            })).json);
             assert.deepEqual(writePerm, { success: true, notebook: notebookId, permission: 'rwd' });
 
             const writeConf = (await callToolJson(client, 'notebook', {

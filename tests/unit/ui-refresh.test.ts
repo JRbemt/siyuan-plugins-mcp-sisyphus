@@ -165,6 +165,19 @@ describe('UI refresh integration', () => {
         expect(client.request).toHaveBeenCalledWith('/api/ui/reloadProtyle', { id: 'doc-1' });
     });
 
+    it('keeps block update warning alongside ui refresh metadata', async () => {
+        const result = await callBlockTool(client, {
+            action: 'update',
+            id: 'block-1',
+            dataType: 'markdown',
+            data: 'line 1\nline 2',
+        }, blockConfig as never, permMgr);
+
+        const parsed = parseResult(result);
+        expect(parsed.warning).toMatch(/single-block replacement/);
+        expect(parsed.uiRefresh.operations).toEqual([{ type: 'reloadProtyle', id: 'doc-1' }]);
+    });
+
     it('keeps block update successful when refresh fails', async () => {
         client.request = vi.fn(async (endpoint: string) => {
             if (endpoint === '/api/ui/reloadProtyle') throw new Error('reload failed');
