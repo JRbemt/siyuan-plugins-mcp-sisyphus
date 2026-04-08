@@ -22,17 +22,27 @@ describe('puppy tool visuals helpers', () => {
         expect(resolveActionState('buy')).toBe('writing');
     });
 
-    it('recognizes av and mascot as supported tool variants', () => {
+    it('maps flashcard actions into reading, writing, and deleting states', () => {
+        expect(resolveActionState('list_cards')).toBe('reading');
+        expect(resolveActionState('get_decks')).toBe('reading');
+        expect(resolveActionState('review_card')).toBe('writing');
+        expect(resolveActionState('remove_card')).toBe('deleting');
+    });
+
+    it('recognizes av, flashcard, and mascot as supported tool variants', () => {
         expect(resolveToolVariant('av')).toBe('av');
+        expect(resolveToolVariant('flashcard')).toBe('flashcard');
         expect(resolveToolVariant('mascot')).toBe('mascot');
         expect(resolveToolVariant('unknown')).toBe('none');
     });
 
-    it('includes av and mascot actions in random test rotation', () => {
+    it('includes av, flashcard, and mascot actions in random test rotation', () => {
         expect(RANDOM_TEST_ACTIONS).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ tool: 'av', action: 'get' }),
                 expect.objectContaining({ tool: 'av', action: 'set_cell' }),
+                expect.objectContaining({ tool: 'flashcard', action: 'list_cards' }),
+                expect.objectContaining({ tool: 'flashcard', action: 'review_card' }),
                 expect.objectContaining({ tool: 'mascot', action: 'get_balance' }),
                 expect.objectContaining({ tool: 'mascot', action: 'buy' }),
             ]),

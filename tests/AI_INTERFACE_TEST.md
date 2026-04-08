@@ -4,7 +4,7 @@
 
 请调用 `siyuan-mcp-sisyphus` 进行测试。
 
-目标是让 AI 在尽量少猜测的前提下，对当前 MCP 暴露的 `notebook` / `document` / `block` / `av` / `file` / `search` / `tag` / `system` / `mascot` 九类工具进行**系统化全量回归测试**，重点覆盖：
+目标是让 AI 在尽量少猜测的前提下，对当前 MCP 暴露的 `notebook` / `document` / `block` / `av` / `file` / `search` / `tag` / `system` / `flashcard` / `mascot` 十类工具进行**系统化全量回归测试**，重点覆盖：
 
 - 聚合工具是否正确暴露
 - 文档路径语义是否正确
@@ -15,6 +15,7 @@
 - 搜索与查询功能是否正常
 - 标签工具是否正常
 - 系统工具是否正常
+- 闪卡发现 / 查询 / 复习 / 加删卡链路是否正常
 - `mascot` 余额 / 商店 / 购买链路是否正常
 
 ---
@@ -33,6 +34,7 @@
 - `search` 工具的全文搜索、SQL、标签搜索、反向链接 / 提及
 - `tag` 工具对标签列表、改名、删除的聚合封装
 - `system` 工具对系统信息、配置、消息与帮助的聚合封装
+- `flashcard` 工具对卡包发现、卡片查询、复习流与加删卡的聚合封装
 - `mascot` 工具对余额、商店与购买的聚合封装
 
 ---
@@ -76,7 +78,21 @@ AI 在执行本手册时，必须遵守以下规则：
    - 或该 AV 中由本轮测试新加的列 / 新绑的行
 6. 如果 `add_rows` 无法返回或无法推导出真实 **row item ID**，后续 `set_cell` / `batch_set_cells` 必须记为 `FAIL` 或 `BLOCKED`，不得猜测 `rowID`。
 
-### 2.2 状态定义
+### 2.2 flashcard 特别规则
+
+由于 `flashcard` 的部分 action 依赖真实 `deckID` / `cardID`，AI 必须遵守：
+
+1. 优先执行安全的只读发现链路：
+   - `flashcard(action="get_decks")`
+   - `flashcard(action="list_cards", ...)`
+   - `flashcard(action="get_cards", deckID=...)`
+2. 只有在本轮测试中已经拿到真实 `deckID` 后，才允许执行 `add_card`。
+3. 只有在本轮测试中已经拿到真实 `cardID` 后，才允许执行 `review_card` / `skip_review_card`。
+4. `remove_card` 属于删除类高风险动作，只允许移除本轮测试通过 `add_card` 加入到 deck 的测试块。
+5. 不得猜测 `deckID` / `cardID`；若环境无法提供，相关步骤统一记为 `BLOCKED`。
+6. 不得把 `block(action="set_attrs", attrs={"custom-riff-decks":"..."})` 伪装成 `flashcard` tool 已覆盖；该能力可作为补充说明，但不能替代 `flashcard` action 测试。
+
+### 2.3 状态定义
 
 - `PASS`：已执行且结果符合预期
 - `FAIL`：已执行但结果不符合预期
@@ -106,7 +122,8 @@ AI 在执行本手册时，必须遵守以下规则：
    - 写单元格
    - 清理测试行 / 测试列
 9. `mascot.get_balance` 与 `mascot.shop` 正常；若余额足够则 `buy` 也应可验证
-10. 清理完成，无遗留测试对象
+10. `flashcard` 至少完成一轮只读发现；若环境提供真实 `deckID` / `cardID`，则 `get_cards`、`review_card`、`skip_review_card`、`add_card`、`remove_card` 也应按条件验证
+11. 清理完成，无遗留测试对象
 
 ---
 
@@ -114,7 +131,7 @@ AI 在执行本手册时，必须遵守以下规则：
 
 ### 4.1 工具可见性检查
 
-确认存在以下 9 个聚合工具：
+确认存在以下 10 个聚合工具：
 
 - `notebook`
 - `document`
@@ -124,6 +141,7 @@ AI 在执行本手册时，必须遵守以下规则：
 - `search`
 - `tag`
 - `system`
+- `flashcard`
 - `mascot`
 
 说明：
@@ -237,6 +255,16 @@ AI 在执行本手册时，必须遵守以下规则：
 - `get_backlinks`
 - `get_backmentions`
 
+#### flashcard
+
+- `list_cards`
+- `get_decks`
+- `get_cards`
+- `review_card`
+- `skip_review_card`
+- `add_card`
+- `remove_card`
+
 #### mascot
 
 - `get_balance`
@@ -245,9 +273,9 @@ AI 在执行本手册时，必须遵守以下规则：
 
 如果缺少任一关键 action，记录 `BLOCKED` 并在最终报告里指出。
 
-### 4.3 九类 tool 权限预热
+### 4.3 十类 tool 权限预热
 
-为了避免 AI 在测试进行到一半时，首次调用某个 tool 才弹出权限确认而卡住，需要在**测试刚开始阶段**主动把 9 个聚合 tool 都至少调用一次。
+为了避免 AI 在测试进行到一半时，首次调用某个 tool 才弹出权限确认而卡住，需要在**测试刚开始阶段**主动把 10 个聚合 tool 都至少调用一次。
 
 #### 阶段 A：创建测试对象前先预热能直接调用的 tool
 
@@ -255,7 +283,8 @@ AI 在执行本手册时，必须遵守以下规则：
 2. `system(action="get_version")`
 3. `search(action="search_tag", k="test")`
 4. `tag(action="list")`
-5. `mascot(action="get_balance")`
+5. `flashcard(action="get_decks")`
+6. `mascot(action="get_balance")`
 
 #### 阶段 B：创建最小测试对象后再预热依赖对象 ID 的 tool
 
@@ -269,18 +298,20 @@ AI 在执行本手册时，必须遵守以下规则：
 3. `document(action="get_path", id=sourceDocId)`
 4. `block(action="get_children", id=sourceDocId)`
 5. `file(action="render_sprig", template="warmup")`
-6. 如果用户已提供 `providedAvID`，执行：
+6. `flashcard(action="list_cards", scope="all", filter="due")`
+7. 如果用户已提供 `providedAvID`，执行：
    - `av(action="get", id=providedAvID)`
    否则执行：
    - `av(action="search", keyword="test")`
 
 #### 说明
 
-- 这一步的目标是**提前触发 9 个 tool 的权限请求**，不是验证业务功能。
+- 这一步的目标是**提前触发 10 个 tool 的权限请求**，不是验证业务功能。
 - `document` 与 `block` 的预热**不要**依赖用户已有对象，统一使用测试过程中刚创建的 `sourceDocId`。
 - `av` 预热优先使用用户提供的 `providedAvID`；如果还没有该信息，只允许做安全的只读探测。
+- `flashcard` 预热优先使用只读 action，不要在预热阶段执行 `review_card` / `add_card` / `remove_card`。
 - 这些预热调用本身也要记录进测试日志，但不单独计入正式用例结果。
-- 只有在九个 tool 都至少被调用过一次之后，才进入正式测试步骤。
+- 只有在十个 tool 都至少被调用过一次之后，才进入正式测试步骤。
 
 ---
 
@@ -344,7 +375,19 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `refSourceBlockId`
 - `refTargetBlockId`
 
-### 5.4 AV 测试辅助块
+### 5.4 flashcard 测试辅助块
+
+AI 还需要在 `SourceDoc` 中再准备 1～2 个普通块，供 `flashcard.add_card` / `remove_card` 复用，例如：
+
+- `flashcard question seed`
+- `flashcard answer seed`
+
+保存返回的：
+
+- `flashcardBlockId1`
+- `flashcardBlockId2`
+
+### 5.5 AV 测试辅助块
 
 如果用户已提供 `providedAvID`，AI 还需要在 `SourceDoc` 中再准备 2 个普通段落块，供 `av.add_rows` 绑定为数据库行，例如：
 
@@ -356,7 +399,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `avRowBlockId1`
 - `avRowBlockId2`
 
-### 5.5 路径与顺序语义约定
+### 5.6 路径与顺序语义约定
 
 后续测试统一以以下约定为准：
 
@@ -1639,7 +1682,62 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T38 - help 与渐进披露补充
+### T38 - flashcard 全量覆盖
+
+#### 目标
+
+覆盖 `list_cards` / `get_decks` / `get_cards` / `review_card` / `skip_review_card` / `add_card` / `remove_card`。
+
+#### 步骤
+
+1. `flashcard(action="get_decks")`
+2. 记录一个可安全使用的 `deckID` 为 `testDeckID`
+   - 如果没有任何 deck，记录后续依赖 deck 的步骤为 `BLOCKED`
+3. `flashcard(action="list_cards", scope="all", filter="due")`
+4. 如果已有 `testDeckID`，执行：
+   - `flashcard(action="list_cards", scope="deck", deckID=testDeckID, filter="due")`
+   - `flashcard(action="list_cards", scope="deck", deckID=testDeckID, filter="new")`
+   - `flashcard(action="list_cards", scope="deck", deckID=testDeckID, filter="old")`
+   - `flashcard(action="get_cards", deckID=testDeckID, page=1, pageSize=32)`
+5. 如果 `testNotebookId` 已知，执行：
+   - `flashcard(action="list_cards", scope="notebook", notebook=testNotebookId, filter="due")`
+6. 如果 `sourceDocId` 已知，执行：
+   - `flashcard(action="list_cards", scope="tree", rootID=sourceDocId, filter="due")`
+7. 如果已有 `testDeckID` 且已准备 `flashcardBlockId1`，执行：
+   - `flashcard(action="add_card", deckID=testDeckID, blockIDs=[flashcardBlockId1])`
+8. 第 7 步成功后，再次执行：
+   - `flashcard(action="get_cards", deckID=testDeckID, page=1, pageSize=64)`
+   - 尝试定位与 `flashcardBlockId1` 对应的 `cardID`，记为 `testCardID`
+9. 如果已拿到 `testCardID`，执行：
+   - `flashcard(action="review_card", deckID=testDeckID, cardID=testCardID, rating=3)`
+   - `flashcard(action="skip_review_card", deckID=testDeckID, cardID=testCardID)`
+   否则将这两步记录为 `BLOCKED`
+10. 如果第 7 步成功，执行：
+    - `flashcard(action="remove_card", deckID=testDeckID, blockIDs=[flashcardBlockId1])`
+11. 再次执行 `flashcard(action="get_cards", deckID=testDeckID, page=1, pageSize=64)` 复核移除效果
+
+#### 预期
+
+- `get_decks` 返回结构化 deck 列表，能发现可用 `deckID`
+- `list_cards` 返回结构化结果，且包含：
+  - `action`
+  - `scope`
+  - `filter`
+  - `cards`
+- 当 `filter="new"` 时，返回结果应仅包含新卡状态；当 `filter="old"` 时，应仅包含旧卡状态；若为空也应返回空数组而不是报错
+- `get_cards` 返回：
+  - `cards`
+  - `total`
+  - `pageCount`
+  - `page`
+- `add_card` / `remove_card` 返回结构化 `result`，且效果能被后续 `get_cards` 侧面验证
+- 只有在已拿到真实 `cardID` 时，`review_card` / `skip_review_card` 才执行；否则必须记为 `BLOCKED`
+- 不得猜测 `deckID` / `cardID`
+- `remove_card` 只允许作用于本轮测试加入的 `flashcardBlockId1`
+
+---
+
+### T39 - help 与渐进披露补充
 
 #### 目标
 
@@ -1680,7 +1778,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T39 - av 只读能力
+### T40 - av 只读能力
 
 #### 目标
 
@@ -1704,7 +1802,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T40 - av 写链路（需用户先提供真实 AV）
+### T41 - av 写链路（需用户先提供真实 AV）
 
 #### 目标
 
@@ -1747,7 +1845,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T41 - av 复制能力
+### T42 - av 复制能力
 
 #### 目标
 
@@ -1787,7 +1885,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T42 - 设置页补充检查（仅限 `file.upload_asset` 相关）
+### T43 - 设置页补充检查（仅限 `file.upload_asset` 相关）
 
 #### 目标
 
@@ -1816,7 +1914,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 
 ---
 
-### T43 - 权限覆盖矩阵复核
+### T44 - 权限覆盖矩阵复核
 
 #### 目标
 
@@ -1834,6 +1932,7 @@ AI 需要在 `SourceDoc` 中额外准备以下内容，供后续测试复用：
 - `search`：`fulltext` `query_sql` `search_tag` `get_backlinks` `get_backmentions`
 - `tag`：`list` `rename` `remove`
 - `system`：`workspace_info` `network` `changelog` `conf` `sys_fonts` `boot_progress` `push_msg` `push_err_msg` `get_version` `get_current_time`
+- `flashcard`：`list_cards` `get_decks` `get_cards` `review_card` `skip_review_card` `add_card` `remove_card`
 - `mascot`：`get_balance` `shop` `buy`
 
 如果某项未覆盖，必须明确标记为 `MISS`，不能默认算通过。
@@ -1885,6 +1984,8 @@ AI 完成测试后，必须输出如下结构的报告。
   - `search.query_sql`
   - `tag.list`
   - `system.workspace_info`
+  - `flashcard.get_decks`
+  - `flashcard.get_cards`
   - `mascot.get_balance`
 
 ### 11.3 主流程结果
@@ -1930,9 +2031,12 @@ AI 完成测试后，必须输出如下结构的报告。
 24. `file.upload_asset` / `file.render_template` / `file.export_resources` 是否正常？
 25. 在用户已提供真实 AV 的前提下，`av.get` / `add_column` / `add_rows` / `set_cell` / `batch_set_cells` / `remove_rows` / `remove_column` 是否正常？
 26. `av.duplicate_block` 是否返回了可解释、可继续追踪的结果？
-27. `mascot.get_balance` / `shop` 是否正常？
-28. 若余额足够，`mascot.buy` 是否正常？
-29. 是否所有已暴露 action 都至少测试到一次？
+27. `flashcard.get_decks` / `list_cards` / `get_cards` 是否正常？
+28. 若环境能提供真实 `cardID`，`flashcard.review_card` / `skip_review_card` 是否正常？
+29. 若环境能提供真实 `deckID`，`flashcard.add_card` / `remove_card` 是否正常？
+30. `mascot.get_balance` / `shop` 是否正常？
+31. 若余额足够，`mascot.buy` 是否正常？
+32. 是否所有已暴露 action 都至少测试到一次？
 
 ### 11.6 覆盖矩阵
 
@@ -1982,6 +2086,7 @@ AI 完成测试后，必须输出如下结构的报告。
 > 请严格按照 `AI_INTERFACE_TEST.md` 执行 SiYuan MCP 接口测试。  
 > 只允许操作你自己创建的测试笔记本和测试文档。  
 > 如果要测试 `av` 写链路，必须要求用户先提供一个现成的真实数据库 `avID`；不允许把 Markdown 表格当数据库。  
+> 如果要测试 `flashcard.review_card` / `skip_review_card` / `add_card` / `remove_card`，必须先通过安全的只读步骤拿到真实 `deckID` / `cardID`；拿不到就标记为 `BLOCKED`，不允许猜测。  
 > 每一步都要记录调用参数、返回结果、预期结果和 PASS/FAIL。  
 > 如果某一步失败，保留现场并继续执行后续安全步骤。  
 > 必须覆盖所有已暴露的聚合 tool 和 action；如果某项因环境原因无法执行，标记为 BLOCKED，不允许跳过不记。  

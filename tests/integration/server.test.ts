@@ -109,6 +109,8 @@ describe('MCP Server Integration', () => {
             expect(toolNames).toContain('file');
             expect(toolNames).toContain('tag');
             expect(toolNames).toContain('system');
+            expect(toolNames).toContain('flashcard');
+            expect(toolNames).toContain('mascot');
         });
 
         it('should have action enum in each tool input schema', async () => {

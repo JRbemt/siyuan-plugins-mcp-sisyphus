@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AV_ACTIONS, BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, MASCOT_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS, SYSTEM_ACTIONS, TAG_ACTIONS } from "./config";
+import { AV_ACTIONS, BLOCK_ACTIONS, DOCUMENT_ACTIONS, FILE_ACTIONS, FLASHCARD_ACTIONS, MASCOT_ACTIONS, NOTEBOOK_ACTIONS, SEARCH_ACTIONS, SYSTEM_ACTIONS, TAG_ACTIONS } from "./config";
 
 const NotebookConfSchema = z.object({
     name: z.string().optional(),
@@ -75,6 +75,7 @@ export const DocumentActionSchema = z.enum(DOCUMENT_ACTIONS);
 export const BlockActionSchema = z.enum(BLOCK_ACTIONS);
 export const AvActionSchema = z.enum(AV_ACTIONS);
 export const FileActionSchema = z.enum(FILE_ACTIONS);
+export const FlashcardActionSchema = z.enum(FLASHCARD_ACTIONS);
 export const MascotActionSchema = z.enum(MASCOT_ACTIONS);
 
 export const NotebookListSchema = z.object({
@@ -244,6 +245,72 @@ export const MascotShopSchema = z.object({
 export const MascotBuySchema = z.object({
     action: z.literal("buy"),
     item_id: z.string().describe("Stable shop item ID returned by mascot(action=\"shop\")"),
+});
+
+const FlashcardScopeSchema = z.enum(["all", "deck", "notebook", "tree"]);
+const FlashcardFilterSchema = z.enum(["due", "new", "old"]);
+
+export const FlashcardListCardsSchema = z.object({
+    action: z.literal("list_cards"),
+    scope: FlashcardScopeSchema.describe('Query scope: "all", "deck", "notebook", or "tree"'),
+    filter: FlashcardFilterSchema.describe('Filter returned cards: "due", "new", or "old"'),
+    deckID: z.string().optional().describe("Deck ID, required when scope=deck"),
+    notebook: z.string().optional().describe("Notebook ID, required when scope=notebook"),
+    rootID: z.string().optional().describe("Root document/block ID, required when scope=tree"),
+}).superRefine((value, ctx) => {
+    const hasDeck = typeof value.deckID === "string";
+    const hasNotebook = typeof value.notebook === "string";
+    const hasRoot = typeof value.rootID === "string";
+
+    if (value.scope === "all" && (hasDeck || hasNotebook || hasRoot)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'scope="all" does not accept deckID, notebook, or rootID.' });
+    }
+    if (value.scope === "deck" && !hasDeck) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["deckID"], message: 'deckID is required when scope="deck".' });
+    }
+    if (value.scope === "notebook" && !hasNotebook) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["notebook"], message: 'notebook is required when scope="notebook".' });
+    }
+    if (value.scope === "tree" && !hasRoot) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["rootID"], message: 'rootID is required when scope="tree".' });
+    }
+});
+
+export const FlashcardGetDecksSchema = z.object({
+    action: z.literal("get_decks"),
+});
+
+export const FlashcardReviewCardSchema = z.object({
+    action: z.literal("review_card"),
+    deckID: z.string().describe("Deck ID"),
+    cardID: z.string().describe("Card ID"),
+    rating: z.number().describe("Review rating passed through to the kernel"),
+    reviewedCards: z.array(z.record(z.string(), z.unknown())).optional().describe("Optional reviewedCards payload passed through to the kernel"),
+});
+
+export const FlashcardSkipReviewCardSchema = z.object({
+    action: z.literal("skip_review_card"),
+    deckID: z.string().describe("Deck ID"),
+    cardID: z.string().describe("Card ID"),
+});
+
+export const FlashcardAddCardSchema = z.object({
+    action: z.literal("add_card"),
+    deckID: z.string().describe("Deck ID"),
+    blockIDs: z.array(z.string()).min(1).describe("Existing block IDs to add as flashcards"),
+});
+
+export const FlashcardRemoveCardSchema = z.object({
+    action: z.literal("remove_card"),
+    deckID: z.string().describe("Deck ID"),
+    blockIDs: z.array(z.string()).min(1).describe("Existing block IDs to remove from flashcards"),
+});
+
+export const FlashcardGetCardsSchema = z.object({
+    action: z.literal("get_cards"),
+    deckID: z.string().describe("Deck ID (use empty string to query across all decks)"),
+    page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
+    pageSize: z.number().int().min(1).max(512).optional().describe("Cards per page, default 32"),
 });
 
 export const BlockInsertSchema = z.object({

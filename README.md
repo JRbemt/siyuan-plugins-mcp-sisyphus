@@ -4,7 +4,25 @@
 
 > Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenCode, Claude Code, and other AI CLI tools directly in the SiYuan sidebar.
 
-A SiYuan Note MCP server plugin built around progressive disclosure — exposing nine aggregated tools: `notebook`, `document`, `block`, `av`, `file`, `search`, `tag`, `system`, and `mascot`. Paired with a four-state permission model (`none` / `r` / `rw` / `rwd`), mandatory confirmation gates on high-risk actions, steadily refined tool behavior, and a lightweight mascot feedback loop, it streamlines AI integration while keeping your note data safe — making automation more reliable and access control more precise.
+This is an MCP server plugin that **connects SiYuan Note to AI agents**. Once installed, any MCP-capable agent can treat SiYuan as a callable toolset: read notes, search documents, edit block content, work with databases, and export resources.
+
+If MCP is new to you, here is the simple version:
+
+- **SiYuan** stores your notes and data
+- **This plugin** exposes SiYuan as an MCP server
+- **Your agent / MCP client** starts that server and calls its tools
+- **MCP** is the protocol that lets agents talk to external tools in a standard way
+
+In other words, the plugin does one simple thing: **make SiYuan safely visible and callable from your agent**.
+
+## Features
+
+- Aggregates common SiYuan capabilities into 10 grouped tools, reducing the chance that an agent picks the wrong tool
+- Covers notebooks, documents, blocks, databases, assets, search, tags, flashcards, and system capabilities across 90 actions
+- Provides a four-state permission model: `none` / `r` / `rw` / `rwd`, making notebook-level access control easier
+- Follows a progressive disclosure design to reduce token usage
+
+It currently exposes 10 aggregated tools:
 
 - `notebook`
 - `document`
@@ -14,9 +32,172 @@ A SiYuan Note MCP server plugin built around progressive disclosure — exposing
 - `search`
 - `tag`
 - `system`
+- `flashcard`
 - `mascot`
 
 Each tool uses a required `action` field instead of exposing dozens of endpoint-shaped tool names.
+
+## Quick Start
+
+### 1. Install the plugin
+
+#### From SiYuan Marketplace
+
+1. Open SiYuan Note
+2. Go to `Settings -> Marketplace`
+3. Search for `SiYuan MCP`
+4. Install and enable the plugin
+
+#### From source
+
+```bash
+git clone https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus.git
+cd siyuan-plugins-mcp-sisyphus
+pnpm install
+pnpm run build
+pnpm run make-link
+```
+
+### 2. Understand what your agent needs
+
+Most MCP clients ask for the same three things:
+
+- `command`: how to start the MCP server
+- `args`: what arguments to pass
+- `env`: optional environment variables such as the SiYuan URL and token
+
+For this plugin, the minimal config usually looks like this:
+
+```json
+{
+  "mcpServers": {
+    "siyuan": {
+      "command": "node",
+      "args": ["{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"],
+      "env": {
+        "SIYUAN_API_URL": "http://127.0.0.1:6806",
+        "SIYUAN_TOKEN": "xxxxxx"
+      }
+    }
+  }
+}
+```
+
+Notes:
+
+- Replace `{SIYUAN_PATH}` with your actual SiYuan path
+- The plugin folder name must match `plugin.json.name`: `siyuan-plugins-mcp-sisyphus`
+- If SiYuan API auth is disabled, you can omit `SIYUAN_TOKEN`
+- If API auth is enabled, get the token from `Settings -> About`
+
+### 3. How Agent, MCP, and SiYuan work together
+
+The flow is:
+
+1. Your agent starts the generated `mcp-server.cjs`
+2. That server connects to your local SiYuan API
+3. The agent reads the tools exposed by this MCP server
+4. You can then ask the agent in natural language to work with your notes
+
+Any MCP-capable client follows roughly this same setup. The usual differences are only:
+
+- where the config file lives
+- whether the outer JSON wrapper differs a bit
+- whether the client needs a restart after config changes
+
+### 4. What to try first
+
+Start with low-risk, read-only requests to confirm the connection:
+
+- “Show me the current SiYuan version.”
+- “List my notebooks.”
+- “Find documents with `Weekly` in the title.”
+
+If your client shows tool calls, you will usually see actions such as:
+
+- `system(action="get_version")`
+- `notebook(action="list")`
+- `document(action="search_docs", ...)`
+
+### 5. Natural-language examples
+
+In daily use, it is usually enough to just tell your agent:
+
+- “List all my notebooks.”
+- “Find documents with `Weekly` in the title.”
+- “Append a todo to the end of this document: send weekly report tomorrow.”
+- “Show backlinks for this block.”
+
+If you are manually debugging MCP, the action tables and JSON-oriented sections below are still there.
+
+## Troubleshooting
+
+### My agent cannot see the tools
+
+- Make sure the path points to `mcp-server.cjs`
+- Restart the MCP client after changing its config
+
+### The server connects, but calls fail
+
+- Check `SIYUAN_API_URL`, usually `http://127.0.0.1:6806`
+- If SiYuan API auth is enabled, verify `SIYUAN_TOKEN`
+- Check whether the target notebook permission is `r` or `none`
+
+### Why does the agent ask for confirmation?
+
+That is expected. High-risk actions such as delete, move, local file upload, or permission changes are intentionally confirmation-gated.
+
+## Tool Overview
+
+- `notebook`: notebook-level operations
+- `document`: create, move, query, and traverse documents
+- `block`: block editing, attributes, folding, moving
+- `av`: attribute view / database operations
+- `file`: uploads, exports, template rendering
+- `search`: full-text, SQL, backlinks, tag search
+- `tag`: tag management
+- `system`: version, time, notifications, config summary
+- `flashcard`: review and deck operations
+- `mascot`: balance, shop, and purchases
+
+## Permission Model
+
+- `rwd`: full read/write/delete access
+- `rw`: read/write access, but delete actions are rejected
+- `r`: read access only; all write and delete actions are rejected
+- `none`: no read, write, or delete access
+- `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
+- For AI regression runs, preheat all 10 tools early so permission prompts do not interrupt the middle of a test
+
+## High-Risk Actions
+
+The server instructions require explicit user confirmation before these actions are called:
+
+- `notebook(action="remove")`
+- `notebook(action="set_permission")`
+- `document(action="remove")`
+- `document(action="move")`
+- `block(action="delete")`
+- `block(action="move")`
+- `file(action="upload_asset")`
+- `tag(action="remove")`
+- `flashcard(action="remove_card")`
+
+If your client shows MCP instructions, the model should ask for confirmation before executing them. This is an instruction-layer safety rule, not a server-side modal dialog guarantee.
+
+In the default fallback config, `document(action="move")` and `block(action="move")` are still exposed. They are not safe to call without confirmation just because they are enabled.
+
+Also note:
+
+- `file(action="upload_asset")` on files larger than the configured threshold (`10 MB` by default) must stop the current operation and ask the user before retrying with `confirmLargeFile=true`.
+- `document(action="move", fromPaths + toNotebook + toPath)` expects `toPath` to be the storage path of an existing destination document.
+- `block(action="move")` returns a structured success object from MCP, even though the underlying SiYuan API may return `null`.
+
+## MCP Client Configuration
+
+OpenClaw / mcporter users can follow [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md).
+
+Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 
 ## Design: Progressive Disclosure
 
@@ -54,28 +235,9 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 
 **Design goals:** reduce first-call cognitive load; preserve full capability (all advanced actions remain usable); maintain backward compatibility with existing configs and tool names.
 
-## Features
-
-- Full SiYuan API coverage for notebooks, documents, blocks, assets, export, and notifications
-- A smaller MCP surface: 9 grouped tools instead of dozens of endpoint-level tools
-- Clearer parameter semantics, result shapes, and help messages for smoother MCP client integration
-- Action-level toggles in the plugin settings. In the default fallback config, delete-style actions are disabled while move actions stay enabled and confirmation-gated.
-- Notebook- and document-level tree queries for direct child documents and blocks
-- Full-text search, SQL queries, tag search, backlink and backmention queries
-- A mascot tool plus on-screen mascot feedback for balance, shop, buy, and lightweight MCP activity visibility
-- Notebook permission guards now resolve block/document ownership before mutating APIs run, with more predictable edge-case handling
-
-## Permission Model
-
-- `rwd`: full read/write/delete access
-- `rw`: read/write access, but delete actions are rejected
-- `r`: read access only; all write and delete actions are rejected
-- `none`: no read, write, or delete access
-- `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
-- For AI regression runs, preheat all 9 tools early so permission prompts do not interrupt the middle of a test
-
 ## Timeline
 
+- `v0.1.17`: Adds the `flashcard` aggregated tool with 7 flashcard actions, refreshes bilingual docs with a quick-start guide, and expands the tool surface to 10 tools
 - `v0.1.16`: Adds automatic UI refresh after mutations, improves AV write semantics and ID handling, and adds debugging helpers plus regression tests
 - `v0.1.15`: Clarifies AV row/value identity, adds stronger AV write semantics for `mAsset` and duplicate-block flows, and refreshes mascot plus regression docs/tests
 - `v0.1.14`: Adds an `ai-layout-guide` help resource, teaches better SiYuan layout semantics for notes, tags, bookmarks, and flashcards, and refreshes smoke coverage for the 8-tool surface
@@ -92,71 +254,6 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 - `v0.1.2`: Merges MCP tool config into one entry and adds dual-path fallback for more reliable loading
 
 See full history in [CHANGELOG.md](./CHANGELOG.md).
-
-## High-Risk Actions
-
-The server instructions require explicit user confirmation before these actions are called:
-
-- `notebook(action="remove")`
-- `notebook(action="set_permission")`
-- `document(action="remove")`
-- `document(action="move")`
-- `block(action="delete")`
-- `block(action="move")`
-- `file(action="upload_asset")`
-- `tag(action="remove")`
-
-If your client shows MCP instructions, the model should ask for confirmation before executing them. This is an instruction-layer safety rule, not a server-side modal dialog guarantee.
-
-In the default fallback config, `document(action="move")` and `block(action="move")` are still exposed. They are not safe to call without confirmation just because they are enabled.
-
-Also note:
-- `file(action="upload_asset")` on files larger than the configured threshold (`10 MB` by default) must stop the current operation and ask the user before retrying with `confirmLargeFile=true`.
-
-- `document(action="move", fromPaths + toNotebook + toPath)` expects `toPath` to be the storage path of an existing destination document.
-- `block(action="move")` returns a structured success object from MCP, even though the underlying SiYuan API may return `null`.
-
-## Installation
-
-### From SiYuan Marketplace
-
-1. Open SiYuan Note
-2. Go to Settings > Marketplace
-3. Search for `SiYuan MCP`
-4. Install and enable the plugin
-
-### From Source
-
-```bash
-git clone https://github.com/your-repo/siyuan-plugins-mcp-sisyphus.git
-pnpm install
-pnpm run build
-pnpm run make-link
-```
-
-## MCP Client Configuration
-
-```json
-{
-  "mcpServers": {
-    "siyuan": {
-      "command": "node",
-      "args": ["{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
-      "env":{
-        "SIYUAN_API_URL": "http://127.0.0.1:6806",
-        "SIYUAN_TOKEN": "xxxxxx"
-      }
-    }
-  }
-}
-```
-`SIYUAN_TOKEN` is optional when your SiYuan instance does not require API authentication. If API authentication is enabled in SiYuan, you must provide `SIYUAN_TOKEN`. Get the API token from `Settings -> About`.
-
-The folder name in the path must match `plugin.json`: `siyuan-plugins-mcp-sisyphus`.
-
-OpenClaw / mcporter users can follow [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md).
-
-Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 
 ## Tool Model
 
@@ -259,6 +356,19 @@ AV notes: this tool operates on real SiYuan attribute views rather than Markdown
 | `sys_fonts` | List available system fonts with summary-first paginated reading |
 | `boot_progress` | Get current boot progress details |
 
+### `flashcard`
+
+| Action | Description |
+|--------|-------------|
+| `list_cards` | List due flashcards across all decks, one deck, one notebook, or one tree, and optionally filter returned cards to `due` / `new` / `old` |
+| `get_decks` | List available flashcard decks for discovering `deckID` values |
+| `review_card` | Submit one flashcard review result with `deckID`, `cardID`, and `rating` |
+| `skip_review_card` | Skip the current flashcard in the review flow |
+| `add_card` | Add existing blocks into a flashcard deck |
+| `remove_card` | Remove existing blocks from a flashcard deck (requires confirmation) |
+
+Flashcard notes: `list_cards` always reads from the kernel due-card APIs and MCP filters `cards[*].state` for `new` / `old`. Flashcard marking still belongs to `block(action="set_attrs", attrs={"custom-riff-decks":"<deck-id>"})`.
+
 ### `mascot`
 
 | Action | Description |
@@ -268,10 +378,6 @@ AV notes: this tool operates on real SiYuan attribute views rather than Markdown
 | `buy` | Buy one mascot shop item by `item_id` and spend from the current balance |
 
 Every successful MCP tool call earns the mascot 1 coin, so the fastest way to earn balance is simply to keep using SiYuan MCP tools. `mascot(action="get_balance")` also returns the lifetime earned count.
-
-Tags are not created through a dedicated tag action. Write tags into block markdown as `#tag#` so SiYuan can recognize them.
-
-Flashcards are marked through block attributes rather than a dedicated action. Use `block(action="set_attrs", id=..., attrs={"custom-riff-decks":"<deck-id>"})` on the question block. A common pattern is to use an `h2` heading as the question and keep the following blocks as the answer.
 
 ### `search`
 

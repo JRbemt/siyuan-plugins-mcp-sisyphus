@@ -12,12 +12,14 @@ import {
     isKnownToolCategory,
 } from './help';
 import { BLOCK_VARIANTS } from './tools/block';
+import { AV_VARIANTS } from './tools/av';
 import { DOCUMENT_VARIANTS } from './tools/document';
 import { FILE_VARIANTS } from './tools/file';
 import { NOTEBOOK_VARIANTS } from './tools/notebook';
 import { SEARCH_VARIANTS } from './tools/search';
 import { SYSTEM_VARIANTS } from './tools/system';
 import { TAG_VARIANTS } from './tools/tag';
+import { FLASHCARD_VARIANTS } from './tools/flashcard';
 import { MASCOT_VARIANTS } from './tools/mascot';
 import { getSchemaProperties, getSchemaRequired, type ActionVariant, type JsonSchema } from './tools/shared';
 
@@ -36,10 +38,12 @@ const VARIANTS_BY_CATEGORY: Record<ToolCategory, ActionVariant<string>[]> = {
     notebook: NOTEBOOK_VARIANTS,
     document: DOCUMENT_VARIANTS,
     block: BLOCK_VARIANTS,
+    av: AV_VARIANTS,
     file: FILE_VARIANTS,
     search: SEARCH_VARIANTS,
     tag: TAG_VARIANTS,
     system: SYSTEM_VARIANTS,
+    flashcard: FLASHCARD_VARIANTS,
     mascot: MASCOT_VARIANTS,
 };
 
@@ -59,6 +63,12 @@ function buildExampleValue(fieldName: string, schema: JsonSchema): unknown {
     switch (fieldName) {
         case 'notebook':
             return '20210808180117-czj9bvb';
+        case 'deckID':
+            return '20230218211946-2kw8jgx';
+        case 'cardID':
+            return '20240318112233-card01';
+        case 'rootID':
+            return '20240318112233-root01';
         case 'id':
         case 'parentID':
         case 'previousID':
@@ -96,6 +106,10 @@ function buildExampleValue(fieldName: string, schema: JsonSchema): unknown {
             return 'Hello from MCP';
         case 'timeout':
             return 3000;
+        case 'rating':
+            return 3;
+        case 'reviewedCards':
+            return [{ cardID: '20240318112233-card01', rating: 3 }];
         case 'assetsDirPath':
             return '/assets/';
         case 'file':
@@ -171,7 +185,7 @@ function renderToolOverview(): string {
     return [
         '# SiYuan MCP Tool Overview',
         '',
-        'This server exposes 9 aggregated tools: `notebook`, `document`, `block`, `av`, `file`, `search`, `tag`, `system`, and `mascot`.',
+        'This server exposes 10 aggregated tools: `notebook`, `document`, `block`, `av`, `file`, `search`, `tag`, `system`, `flashcard`, and `mascot`.',
         '',
         '## High-risk actions',
         '',
@@ -186,6 +200,7 @@ function renderToolOverview(): string {
         '',
         '- Tag creation: write tags into block markdown as `#标签#` so `tag(action="list")` can discover them.',
         '- Flashcards: set `custom-riff-decks` on a block through `block(action="set_attrs")`; a common pattern is `h2` as the question and following blocks as the answer.',
+        '- Review flow: use `flashcard(action="list_cards")` plus `review_card` / `skip_review_card` for scheduled flashcard study.',
         '- Mascot earnings: every successful MCP tool call earns 1 coin. To earn balance quickly, keep using SiYuan MCP tools, then check `mascot(action="get_balance")` or spend with `mascot(action="buy")`.',
         '- AI layout guide: use the layout guide when you need to decide whether content should become headings, callouts, tables, super blocks, visual code blocks, embeds, media blocks, or database blocks.',
         '',

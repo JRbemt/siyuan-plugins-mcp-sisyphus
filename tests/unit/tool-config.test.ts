@@ -12,6 +12,8 @@ describe('setting tool config', () => {
         expect(config.file.uploadLargeFileThresholdMB).toBe(10);
         expect(config.av.actions.get).toBe(true);
         expect(config.av.actions.set_cell).toBe(true);
+        expect(config.flashcard.actions.list_cards).toBe(true);
+        expect(config.flashcard.actions.remove_card).toBe(true);
         expect(config.mascot.actions.get_balance).toBe(true);
         expect(config.mascot.actions.shop).toBe(true);
         expect(config.mascot.actions.buy).toBe(true);
@@ -52,6 +54,23 @@ describe('setting tool config', () => {
         expect(config.mascot.actions.get_balance).toBe(true);
         expect(config.mascot.actions.shop).toBe(false);
         expect(config.mascot.actions.buy).toBe(true);
+    });
+
+    it('keeps flashcard nested action toggles', () => {
+        const config = normalizeToolConfig({
+            flashcard: {
+                enabled: true,
+                actions: {
+                    list_cards: true,
+                    remove_card: false,
+                },
+            },
+        });
+
+        expect(config.flashcard.enabled).toBe(true);
+        expect(config.flashcard.actions.list_cards).toBe(true);
+        expect(config.flashcard.actions.remove_card).toBe(false);
+        expect(config.flashcard.actions.review_card).toBe(true);
     });
 
     it('keeps av nested action toggles', () => {

@@ -193,7 +193,7 @@ async function assertPermissionDenied(client, name, args) {
 async function assertDefaultToolList() {
     await withConfigMode('default', async () => withClient(async (client) => {
         const tools = (await client.listTools()).tools;
-        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'av', 'file', 'search', 'tag', 'system', 'mascot']);
+        assert.deepEqual(tools.map((tool) => tool.name), ['notebook', 'document', 'block', 'av', 'file', 'search', 'tag', 'system', 'flashcard', 'mascot']);
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
         assert.match(descriptions.notebook, /Common actions: list, create, open, close, rename, get_conf, get_child_docs/);
@@ -272,7 +272,7 @@ async function assertDefaultToolList() {
         const toolOverviewText = await readResourceText(client, 'siyuan://help/tool-overview');
         assert.match(toolOverviewText, /SiYuan MCP Tool Overview/);
         assert.match(toolOverviewText, /document\(action="move"\)/);
-        assert.match(toolOverviewText, /9 aggregated tools/);
+        assert.match(toolOverviewText, /10 aggregated tools/);
         assert.match(toolOverviewText, /#标签#/);
         assert.match(toolOverviewText, /custom-riff-decks/);
         assert.match(toolOverviewText, /ai-layout-guide/);

@@ -3,6 +3,7 @@ import {
     type AvAction,
     type BlockAction,
     type DocumentAction,
+    type FlashcardAction,
     type FileAction,
     type NotebookAction,
     type SearchAction,
@@ -71,6 +72,15 @@ export const SYSTEM_GUIDANCE: string[] = [
     'system(action="conf") returns masked configuration, not raw secrets.',
     'Use system(action="conf", mode="summary") first, then mode="get" + keyPath such as conf.appearance.mode or conf.langs[0].',
     'Use system(action="sys_fonts", mode="summary") first, then mode="list" with offset/limit/query for paginated inspection.',
+];
+
+export const FLASHCARD_GUIDANCE: string[] = [
+    'flashcard actions cover review-first flashcard workflows and deck discovery.',
+    'list_cards always reads from the kernel due-card endpoints and MCP post-filters cards by state for filter="new" or filter="old".',
+    'get_cards returns all cards in a deck (not just due ones), with pagination. Use it to browse or audit deck contents.',
+    'To mark a block as a flashcard, keep using block(action="set_attrs", attrs={"custom-riff-decks":"<deck-id>"}).',
+    'add_card and remove_card operate on existing block IDs; they do not create standalone card content.',
+    'flashcard(action="remove_card") requires explicit user confirmation before execution.',
 ];
 
 export const MASCOT_GUIDANCE: string[] = [
@@ -178,6 +188,16 @@ export const SYSTEM_ACTION_HINTS: Partial<Record<SystemAction, string>> = {
     get_current_time: 'Returns the current system time as {currentTime} epoch milliseconds and {iso} ISO 8601 text.',
 };
 
+export const FLASHCARD_ACTION_HINTS: Partial<Record<FlashcardAction, string>> = {
+    list_cards: 'Use scope="all" | "deck" | "notebook" | "tree" plus filter="due" | "new" | "old". For scope="deck", pass deckID. For scope="notebook", pass notebook. For scope="tree", pass rootID.',
+    get_decks: 'Returns available flashcard decks so the caller can discover deckID values.',
+    get_cards: 'Use deckID + optional page/pageSize to list all cards in a deck (regardless of due state). Use empty string deckID to query across all decks. Returns cards, total count, and pageCount.',
+    review_card: 'Use deckID + cardID + rating. reviewedCards is optional and passed through to the kernel as-is.',
+    skip_review_card: 'Use deckID + cardID to skip the current card in a review flow.',
+    add_card: 'Use deckID + blockIDs to add existing blocks to a deck. This does not create new standalone card content.',
+    remove_card: 'Use deckID + blockIDs to remove existing blocks from a deck. This action requires explicit user confirmation.',
+};
+
 export const MASCOT_ACTION_HINTS: Partial<Record<MascotAction, string>> = {
     get_balance: 'Returns the cat’s current balance and lifetime earned count. Each successful MCP tool call adds 1 coin and increments the lifetime count.',
     shop: 'Returns the current mascot shop inventory including stable item IDs, labels, cost, type, and emoji.',
@@ -193,6 +213,7 @@ export const TOOL_GUIDANCE_BY_CATEGORY: Record<ToolCategory, string[]> = {
     search: SEARCH_GUIDANCE,
     tag: TAG_GUIDANCE,
     system: SYSTEM_GUIDANCE,
+    flashcard: FLASHCARD_GUIDANCE,
     mascot: MASCOT_GUIDANCE,
 };
 
@@ -205,6 +226,7 @@ export const TOOL_ACTION_HINTS: Record<ToolCategory, Partial<Record<string, stri
     search: SEARCH_ACTION_HINTS,
     tag: TAG_ACTION_HINTS,
     system: SYSTEM_ACTION_HINTS,
+    flashcard: FLASHCARD_ACTION_HINTS,
     mascot: MASCOT_ACTION_HINTS,
 };
 

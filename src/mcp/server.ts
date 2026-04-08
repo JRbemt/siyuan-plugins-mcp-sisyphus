@@ -16,6 +16,7 @@ import { callNotebookTool, listNotebookTools } from './tools/notebook';
 import { callSearchTool, listSearchTools } from './tools/search';
 import { callSystemTool, listSystemTools } from './tools/system';
 import { callTagTool, listTagTools } from './tools/tag';
+import { callFlashcardTool, listFlashcardTools } from './tools/flashcard';
 import { earnPuppyBalance, readPuppyStats, writePuppyEvent } from './puppy-state';
 import { callMascotTool, listMascotTools } from './tools/mascot';
 
@@ -111,6 +112,7 @@ Additional rules:
 - To mark a block as a flashcard, set “custom-riff-decks” with block(action=”set_attrs”).
 - Common pattern: h2 heading as the question, following blocks as the answer.
 - Cloze: \`==答案==\` is treated as a cloze answer in flashcard review.
+- For scheduled review and deck operations, prefer the dedicated \`flashcard\` tool.
 
 ## SiYuan layout model (summary)
 
@@ -216,6 +218,7 @@ function getToolsByConfig(config: ToolConfig) {
         ...listSearchTools(config.search),
         ...listTagTools(config.tag),
         ...listSystemTools(config.system),
+        ...listFlashcardTools(config.flashcard),
         ...listMascotTools(config.mascot),
     ];
 }
@@ -307,6 +310,7 @@ export async function createSiYuanServer(): Promise<Server> {
             case 'search': result = await callSearchTool(client, args, config.search, permMgr); break;
             case 'tag': result = await callTagTool(client, args, config.tag, permMgr); break;
             case 'system': result = await callSystemTool(client, args, config.system, permMgr); break;
+            case 'flashcard': result = await callFlashcardTool(client, args, config.flashcard, permMgr); break;
             case 'mascot': result = await callMascotTool(client, args, config.mascot, permMgr); break;
         }
 

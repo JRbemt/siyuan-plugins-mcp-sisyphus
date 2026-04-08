@@ -2,7 +2,7 @@
     import { onMount } from "svelte";
     import { fetchPost, showMessage } from "siyuan";
 
-    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type AvAction, type BlockAction, type DocumentAction, type FileAction, type MascotAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
+    import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type AvAction, type BlockAction, type DocumentAction, type FileAction, type FlashcardAction, type MascotAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
     import {
     buildDefaultPuppySettings,
     loadPersistedPuppySettings,
@@ -16,7 +16,7 @@
 
     export let plugin: any;
 
-    type GroupAction = NotebookAction | DocumentAction | BlockAction | AvAction | FileAction | SearchAction | TagAction | SystemAction | MascotAction;
+    type GroupAction = NotebookAction | DocumentAction | BlockAction | AvAction | FileAction | SearchAction | TagAction | SystemAction | FlashcardAction | MascotAction;
     type NotebookPermission = 'none' | 'r' | 'rw' | 'rwd';
     const VALID_PERMISSIONS: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
     const LEGACY_PERMISSION_MAP = {
@@ -174,6 +174,19 @@
             ],
         },
         {
+            category: "flashcard",
+            icon: "🃏",
+            groupKey: "Flashcards",
+            actions: [
+                { key: "list_cards", title: "List Cards", description: "List due flashcards by scope and optionally filter to due/new/old cards." },
+                { key: "get_decks", title: "Get Decks", description: "List available flashcard decks for discovering deck IDs." },
+                { key: "review_card", title: "Review Card", description: "Submit a flashcard review rating." },
+                { key: "skip_review_card", title: "Skip Review Card", description: "Skip the current flashcard in the review flow." },
+                { key: "add_card", title: "Add Card", description: "Add existing blocks to a flashcard deck." },
+                { key: "remove_card", title: "Remove Card", description: "Remove existing blocks from a flashcard deck." },
+            ],
+        },
+        {
             category: "mascot",
             icon: "🐾",
             groupKey: "Mascot Tool",
@@ -208,6 +221,7 @@
     let searchItems: ISettingItem[] = [];
     let tagItems: ISettingItem[] = [];
     let systemItems: ISettingItem[] = [];
+    let flashcardItems: ISettingItem[] = [];
     let userRulesItems: ISettingItem[] = [];
     // Permissions tab state
     interface NotebookInfo { id: string; name: string; }
@@ -376,6 +390,7 @@
         searchItems = [buildToolToggleItem(getGroupDefinition("search")), ...buildActionItems(getGroupDefinition("search"))];
         tagItems = [buildToolToggleItem(getGroupDefinition("tag")), ...buildActionItems(getGroupDefinition("tag"))];
         systemItems = [buildToolToggleItem(getGroupDefinition("system")), ...buildActionItems(getGroupDefinition("system"))];
+        flashcardItems = [buildToolToggleItem(getGroupDefinition("flashcard")), ...buildActionItems(getGroupDefinition("flashcard"))];
         userRulesItems = buildUserRulesItems();
         permItems = buildPermItems();
     }
@@ -601,6 +616,7 @@
         <SettingPanel group={groups[6]} settingItems={searchItems} display={focusGroup === groups[6]} on:changed={onChanged} />
         <SettingPanel group={groups[7]} settingItems={tagItems} display={focusGroup === groups[7]} on:changed={onChanged} />
         <SettingPanel group={groups[8]} settingItems={systemItems} display={focusGroup === groups[8]} on:changed={onChanged} />
+        <SettingPanel group={groups[9]} settingItems={flashcardItems} display={focusGroup === groups[9]} on:changed={onChanged} />
         <SettingPanel group={puppyGroupLabel} settingItems={puppyItems} display={focusGroup === puppyGroupLabel} on:changed={onChanged} />
         <SettingPanel group={userRulesGroupLabel} settingItems={userRulesItems} display={focusGroup === userRulesGroupLabel} on:changed={onChanged} />
     </div>
