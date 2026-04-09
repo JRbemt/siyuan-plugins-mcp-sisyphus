@@ -92,6 +92,7 @@ describe('UI refresh integration', () => {
         enabled: true,
         actions: {
             create: true,
+            set_icon: true,
         },
     } as const;
 
@@ -194,6 +195,43 @@ describe('UI refresh integration', () => {
         const parsed = parseResult(result);
         expect(parsed.success).toBe(true);
         expect(parsed.uiRefresh.partialFailure).toEqual([{ type: 'reloadProtyle', id: 'doc-1', message: 'reload failed' }]);
+    });
+
+    it('reloads protyle and filetree after document set_icon', async () => {
+        const result = await callDocumentTool(client, {
+            action: 'set_icon',
+            id: 'doc-1',
+            icon: '1f4d4',
+        }, documentConfig as never, permMgr);
+
+        const parsed = parseResult(result);
+        expect(parsed.uiRefresh.operations).toEqual([
+            { type: 'reloadProtyle', id: 'doc-1' },
+            { type: 'reloadFiletree' },
+        ]);
+        expect(client.request).toHaveBeenNthCalledWith(1, '/api/ui/reloadProtyle', { id: 'doc-1' });
+        expect(client.request).toHaveBeenNthCalledWith(2, '/api/ui/reloadFiletree', {});
+    });
+
+    it('keeps document set_icon successful when filetree refresh fails', async () => {
+        client.request = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/ui/reloadFiletree') throw new Error('filetree reload failed');
+            return null;
+        });
+
+        const result = await callDocumentTool(client, {
+            action: 'set_icon',
+            id: 'doc-1',
+            icon: '1f4d4',
+        }, documentConfig as never, permMgr);
+
+        const parsed = parseResult(result);
+        expect(parsed.success).toBe(true);
+        expect(parsed.uiRefresh.operations).toEqual([
+            { type: 'reloadProtyle', id: 'doc-1' },
+            { type: 'reloadFiletree' },
+        ]);
+        expect(parsed.uiRefresh.partialFailure).toEqual([{ type: 'reloadFiletree', message: 'filetree reload failed' }]);
     });
 
     it('reloads protyle and filetree after document create', async () => {

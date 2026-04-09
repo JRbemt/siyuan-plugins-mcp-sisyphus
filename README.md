@@ -58,54 +58,85 @@ pnpm run build
 pnpm run make-link
 ```
 
-### 2. Understand what your agent needs
+### 2. Connect your agent
 
-Most MCP clients ask for the same three things:
+The plugin supports two connection modes. **HTTP mode is recommended** — easier to set up, supports multiple simultaneous clients, and works across WSL / Docker / remote machines without any path configuration.
 
-- `command`: how to start the MCP server
-- `args`: what arguments to pass
-- `env`: optional environment variables such as the SiYuan URL and token
+---
 
-For this plugin, the minimal config usually looks like this:
+#### Option A: HTTP mode (recommended)
+
+In HTTP mode, the plugin hosts an HTTP MCP server inside SiYuan. **The SiYuan API token is forwarded automatically** — you only need to paste the URL and Bearer token into your client.
+
+**Step 1: Start the HTTP server**
+
+1. Open `Plugin → siyuan-plugins-mcp-sisyphus → Settings → 🌐 HTTP Server`
+2. Default is `Host: 127.0.0.1`, `Port: 36806`
+   - Change Host to `0.0.0.0` if your agent runs in WSL, Docker, or another machine
+3. Keep `Require Bearer token` enabled — a random token is already generated
+4. Click `Start`. Status changes to `Running`.
+5. Check `Auto-start with SiYuan` so you never have to start it manually again
+
+**Step 2: Copy the client config**
+
+The settings panel shows two ready-to-copy snippets at the bottom:
+
+- **Direct HTTP** (Cline, Cherry Studio, Cursor, Windsurf, and other clients with native HTTP support):
+
+  ```json
+  {
+    “mcpServers”: {
+      “siyuan”: {
+        “url”: “http://127.0.0.1:36806/mcp”,
+        “headers”: { “Authorization”: “Bearer <copy token from settings>” }
+      }
+    }
+  }
+  ```
+
+- **mcp-remote bridge** (Claude Desktop and other stdio-only clients):
+
+  ```json
+  {
+    “mcpServers”: {
+      “siyuan”: {
+        “command”: “npx”,
+        “args”: [“mcp-remote”, “http://127.0.0.1:36806/mcp”, “--header”, “Authorization: Bearer <token>”]
+      }
+    }
+  }
+  ```
+
+> **WSL / cross-machine:** set Host to `0.0.0.0` and replace `127.0.0.1` in the client config with your Windows host IP (usually `192.168.x.x`). When binding to a non-loopback address, **always** keep token auth enabled — otherwise anyone on the same network can access your workspace.
+
+---
+
+#### Option B: stdio mode (same machine, classic setup)
+
+If your agent and SiYuan are on the same machine and you prefer not to run an HTTP server:
 
 ```json
 {
-  "mcpServers": {
-    "siyuan": {
-      "command": "node",
-      "args": ["{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"],
-      "env": {
-        "SIYUAN_API_URL": "http://127.0.0.1:6806",
-        "SIYUAN_TOKEN": "xxxxxx"
+  “mcpServers”: {
+    “siyuan”: {
+      “command”: “node”,
+      “args”: [“{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs”],
+      “env”: {
+        “SIYUAN_API_URL”: “http://127.0.0.1:6806”,
+        “SIYUAN_TOKEN”: “xxxxxx”
       }
     }
   }
 }
 ```
 
-Notes:
+- Replace `{SIYUAN_PATH}` with your actual path
+- If SiYuan API auth is disabled, omit `SIYUAN_TOKEN`
+- stdio supports only one client at a time
 
-- Replace `{SIYUAN_PATH}` with your actual SiYuan path
-- The plugin folder name must match `plugin.json.name`: `siyuan-plugins-mcp-sisyphus`
-- If SiYuan API auth is disabled, you can omit `SIYUAN_TOKEN`
-- If API auth is enabled, get the token from `Settings -> About`
+---
 
-### 3. How Agent, MCP, and SiYuan work together
-
-The flow is:
-
-1. Your agent starts the generated `mcp-server.cjs`
-2. That server connects to your local SiYuan API
-3. The agent reads the tools exposed by this MCP server
-4. You can then ask the agent in natural language to work with your notes
-
-Any MCP-capable client follows roughly this same setup. The usual differences are only:
-
-- where the config file lives
-- whether the outer JSON wrapper differs a bit
-- whether the client needs a restart after config changes
-
-### 4. What to try first
+### 3. What to try first
 
 Start with low-risk, read-only requests to confirm the connection:
 
@@ -113,15 +144,9 @@ Start with low-risk, read-only requests to confirm the connection:
 - “List my notebooks.”
 - “Find documents with `Weekly` in the title.”
 
-If your client shows tool calls, you will usually see actions such as:
+Corresponding tool calls: `system(action=”get_version”)`, `notebook(action=”list”)`, `document(action=”search_docs”, ...)`
 
-- `system(action="get_version")`
-- `notebook(action="list")`
-- `document(action="search_docs", ...)`
-
-### 5. Natural-language examples
-
-In daily use, it is usually enough to just tell your agent:
+### 4. Natural-language examples
 
 - “List all my notebooks.”
 - “Find documents with `Weekly` in the title.”
@@ -134,14 +159,14 @@ If you are manually debugging MCP, the action tables and JSON-oriented sections 
 
 ### My agent cannot see the tools
 
-- Make sure the path points to `mcp-server.cjs`
-- Restart the MCP client after changing its config
+- **HTTP mode**: confirm the settings panel shows `Running`; double-check the URL and token
+- **stdio mode**: verify the path points to `mcp-server.cjs`; restart the client after config changes
 
 ### The server connects, but calls fail
 
-- Check `SIYUAN_API_URL`, usually `http://127.0.0.1:6806`
-- If SiYuan API auth is enabled, verify `SIYUAN_TOKEN`
-- Check whether the target notebook permission is `r` or `none`
+- **HTTP mode**: the SiYuan API token is forwarded automatically by the plugin — no manual config needed. Check that SiYuan itself is running normally.
+- **stdio mode**: check `SIYUAN_API_URL` (default `http://127.0.0.1:6806`) and `SIYUAN_TOKEN`
+- Check whether the target notebook permission is set to `r` or `none`
 
 ### Why does the agent ask for confirmation?
 
@@ -237,6 +262,7 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 
 ## Timeline
 
+- `v0.2.0`: Adds HTTP Streamable transport with multi-client support, a one-click start/stop UI in the settings panel, and solves the WSL / remote-agent stdio problem
 - `v0.1.17`: Adds the `flashcard` aggregated tool with 7 flashcard actions, refreshes bilingual docs with a quick-start guide, and expands the tool surface to 10 tools
 - `v0.1.16`: Adds automatic UI refresh after mutations, improves AV write semantics and ID handling, and adds debugging helpers plus regression tests
 - `v0.1.15`: Clarifies AV row/value identity, adds stronger AV write semantics for `mAsset` and duplicate-block flows, and refreshes mascot plus regression docs/tests

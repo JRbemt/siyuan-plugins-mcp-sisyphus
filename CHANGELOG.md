@@ -2,6 +2,13 @@
 
 本文件记录项目的主要版本变更。
 
+## v0.2.0 - 2026-04-09
+
+- 新增 **HTTP Streamable 远程传输模式**，`mcp-server.cjs` 支持通过 `--http` 或 `SIYUAN_MCP_TRANSPORT=http` 启动 HTTP 服务，多个 MCP 客户端可同时连接同一台思源（Stateful 会话，每会话独立 Server 实例），解决 WSL/远程 agent 难以走 stdio 的痛点
+- 在插件设置面板新增「🌐 HTTP Server」分区，支持一键启停、随思源自动启动、Bearer Token 鉴权、客户端配置片段（直连 HTTP 与 mcp-remote 桥接两种）一键复制
+- 内置安全防护：默认绑定 `127.0.0.1`，绑定到非回环地址且未开启鉴权时显示警告；token 自动随机生成，可一键重置
+- 配套环境变量：`SIYUAN_MCP_TRANSPORT`、`SIYUAN_MCP_HOST`、`SIYUAN_MCP_PORT`（默认 36806）、`SIYUAN_MCP_TOKEN`、`SIYUAN_MCP_PATH`（默认 `/mcp`）
+
 ## v0.1.17 - 2026-04-09
 
 - 新增 `flashcard` 聚合 tool，支持闪卡复习、卡组管理、卡片增删等 7 个 action，完善思源记忆卡片能力

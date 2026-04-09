@@ -1,17 +1,23 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import { fetchPost, showMessage } from "siyuan";
 
     import { buildDefaultToolConfig, isDangerousAction, normalizeToolConfig, type AvAction, type BlockAction, type DocumentAction, type FileAction, type FlashcardAction, type MascotAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "./tool-config";
     import {
+    buildDefaultHttpServerSettings,
     buildDefaultPuppySettings,
+    loadPersistedHttpServerSettings,
     loadPersistedPuppySettings,
     loadPersistedToolConfig,
     normalizePuppySettings,
+    regenerateHttpServerToken,
+    savePersistedHttpServerSettings,
     savePersistedPuppySettings,
     savePersistedToolConfig,
+    type HttpServerSettings,
     type PuppySettings,
 } from "./tool-config-storage";
+    import type { HttpServerStatus } from "../server-launcher";
     import SettingPanel from "../libs/components/setting-panel.svelte";
 
     export let plugin: any;
@@ -204,7 +210,9 @@
     const PUPPY_GROUP_LABEL = "🐾 Mascot";
     const PERM_GROUP_KEY = "Permissions";
     const PERM_GROUP_LABEL = "🔒 Permissions";
-    const defaultGroups = [PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.filter((group) => group.category !== "mascot").map((group) => `${group.icon} ${group.groupKey}`), PUPPY_GROUP_LABEL, USER_RULES_GROUP_LABEL];
+    const HTTP_GROUP_KEY = "HTTP Server";
+    const HTTP_GROUP_LABEL = "🌐 HTTP Server";
+    const defaultGroups = [HTTP_GROUP_LABEL, PERM_GROUP_LABEL, ...GROUP_DEFINITIONS.filter((group) => group.category !== "mascot").map((group) => `${group.icon} ${group.groupKey}`), PUPPY_GROUP_LABEL, USER_RULES_GROUP_LABEL];
 
     let config: ToolConfig = buildDefaultToolConfig();
     let groups = defaultGroups;
@@ -223,6 +231,16 @@
     let systemItems: ISettingItem[] = [];
     let flashcardItems: ISettingItem[] = [];
     let userRulesItems: ISettingItem[] = [];
+
+    // HTTP server tab state
+    let httpSettings: HttpServerSettings = buildDefaultHttpServerSettings();
+    let httpStatus: HttpServerStatus = { running: false, host: httpSettings.host, port: httpSettings.port };
+    let httpRecentLogs: string[] = [];
+    let httpDirty = false;
+    let httpBusy = false;
+    let httpUnsubStatus: (() => void) | null = null;
+    let httpUnsubLogs: (() => void) | null = null;
+
     // Permissions tab state
     interface NotebookInfo { id: string; name: string; }
     let notebooks: NotebookInfo[] = [];
@@ -398,7 +416,8 @@
     $: userRulesGroupLabel = `🧭 ${getLabel(USER_RULES_GROUP_KEY, USER_RULES_GROUP_LABEL)}`;
     $: puppyGroupLabel = `🐾 ${getLabel(PUPPY_GROUP_KEY, PUPPY_GROUP_LABEL)}`;
     $: permGroupLabel = `🔒 ${getLabel(PERM_GROUP_KEY, PERM_GROUP_LABEL)}`;
-    $: groups = [permGroupLabel, ...GROUP_DEFINITIONS.filter((group) => group.category !== "mascot").map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), puppyGroupLabel, userRulesGroupLabel];
+    $: httpGroupLabel = `🌐 ${getLabel("httpServerTitle", HTTP_GROUP_KEY)}`;
+    $: groups = [httpGroupLabel, permGroupLabel, ...GROUP_DEFINITIONS.filter((group) => group.category !== "mascot").map((group) => `${group.icon} ${getLabel(group.groupKey, group.groupKey)}`), puppyGroupLabel, userRulesGroupLabel];
     $: if (!groups.includes(focusGroup)) {
         focusGroup = groups[0];
     }
@@ -429,6 +448,18 @@
     onMount(async () => {
         config = await loadPersistedToolConfig(plugin);
         puppySettings = await loadPersistedPuppySettings(plugin);
+        httpSettings = await loadPersistedHttpServerSettings(plugin);
+
+        if (plugin?.httpLauncher) {
+            httpStatus = plugin.httpLauncher.getStatus();
+            httpRecentLogs = plugin.httpLauncher.getRecentLogs();
+            httpUnsubStatus = plugin.httpLauncher.onStatusChange((s: HttpServerStatus) => {
+                httpStatus = s;
+            });
+            httpUnsubLogs = plugin.httpLauncher.onLogsChange((lines: string[]) => {
+                httpRecentLogs = lines;
+            });
+        }
 
         const savedPerms = await plugin?.loadData("notebookPermissions");
         if (savedPerms && typeof savedPerms === "object") {
@@ -443,6 +474,105 @@
 
         await loadNotebooks();
     });
+
+    onDestroy(() => {
+        httpUnsubStatus?.();
+        httpUnsubLogs?.();
+    });
+
+    function generateClientSnippet(s: HttpServerSettings, mode: "direct" | "remote"): string {
+        const url = `http://${s.host}:${s.port}/mcp`;
+        const headers = s.authEnabled ? { Authorization: `Bearer ${s.token}` } : undefined;
+        if (mode === "direct") {
+            const obj: any = { mcpServers: { siyuan: { url } } };
+            if (headers) obj.mcpServers.siyuan.headers = headers;
+            return JSON.stringify(obj, null, 2);
+        }
+        const args = ["mcp-remote", url];
+        if (s.authEnabled) {
+            args.push("--header", `Authorization: Bearer ${s.token}`);
+        }
+        return JSON.stringify({ mcpServers: { siyuan: { command: "npx", args } } }, null, 2);
+    }
+
+    async function copyText(text: string) {
+        try {
+            await navigator.clipboard.writeText(text);
+            showMessage(getLabel("copySuccess", "✅ Copied"));
+        } catch {
+            showMessage(getLabel("copyFailed", "Failed to copy to clipboard"));
+        }
+    }
+
+    async function persistHttpSettings(next: HttpServerSettings, restart: boolean) {
+        if (!plugin) return;
+        if (restart && typeof plugin.updateHttpServerSettings === "function") {
+            httpBusy = true;
+            try {
+                httpSettings = await plugin.updateHttpServerSettings(next);
+            } finally {
+                httpBusy = false;
+            }
+        } else if (typeof plugin.setHttpServerSettings === "function") {
+            httpSettings = await plugin.setHttpServerSettings(next);
+        } else {
+            httpSettings = await savePersistedHttpServerSettings(next, plugin);
+        }
+        httpDirty = false;
+    }
+
+    async function toggleHttpServer() {
+        if (!plugin?.httpLauncher) {
+            showMessage(getLabel("httpUnsupported", "HTTP server is only available in the SiYuan desktop app."));
+            return;
+        }
+        httpBusy = true;
+        try {
+            if (httpStatus.running) {
+                await plugin.stopHttpServer();
+            } else {
+                if (httpDirty) {
+                    await persistHttpSettings(httpSettings, false);
+                }
+                await plugin.startHttpServer();
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            showMessage(`${getLabel("httpStartError", "HTTP server error")}: ${msg}`);
+        } finally {
+            httpBusy = false;
+        }
+    }
+
+    async function applyHttpSettings() {
+        await persistHttpSettings(httpSettings, true);
+        showMessage(getLabel("httpSettingsSaved", "✅ HTTP server settings saved"));
+    }
+
+    function regenerateToken() {
+        httpSettings = regenerateHttpServerToken(httpSettings);
+        httpDirty = true;
+    }
+
+    function markHttpDirty() {
+        httpDirty = true;
+    }
+
+    async function toggleHttpAutoStart(value: boolean) {
+        const next = { ...httpSettings, enabled: value };
+        await persistHttpSettings(next, false);
+    }
+
+    async function onHttpAutoStartChange(event: Event) {
+        const target = event.currentTarget as HTMLInputElement;
+        await toggleHttpAutoStart(target.checked);
+    }
+
+    function onHttpAuthChange(event: Event) {
+        const target = event.currentTarget as HTMLInputElement;
+        httpSettings = { ...httpSettings, authEnabled: target.checked };
+        httpDirty = true;
+    }
 
     function setCategoryEnabled(category: ToolCategory, enabled: boolean) {
         config = {
@@ -607,16 +737,99 @@
         {/each}
     </ul>
     <div class="config__tab-wrap">
+        <SettingPanel group={httpGroupLabel} settingItems={[]} display={focusGroup === httpGroupLabel}>
+            <div class="http-server-section">
+                <div class="http-status-row">
+                    <span class="http-status-dot" class:running={httpStatus.running}></span>
+                    {#if httpStatus.running}
+                        <span class="http-status-text">
+                            {getLabel("httpStatusRunning", "Running")}: <code>http://{httpStatus.host}:{httpStatus.port}/mcp</code>
+                            {#if httpStatus.pid} (PID {httpStatus.pid}){/if}
+                        </span>
+                    {:else}
+                        <span class="http-status-text">{getLabel("httpStatusStopped", "Stopped")}</span>
+                        {#if httpStatus.lastError}
+                            <span class="http-error">{httpStatus.lastError}</span>
+                        {/if}
+                    {/if}
+                </div>
+
+                {#if !plugin?.httpLauncher}
+                    <div class="http-warning">{getLabel("httpUnsupported", "HTTP server is only available in the SiYuan desktop app.")}</div>
+                {/if}
+
+                <div class="http-actions">
+                    <button class="b3-button b3-button--outline" on:click={toggleHttpServer} disabled={httpBusy || !plugin?.httpLauncher}>
+                        {httpStatus.running ? getLabel("httpStop", "Stop") : getLabel("httpStart", "Start")}
+                    </button>
+                    <button class="b3-button b3-button--outline" on:click={applyHttpSettings} disabled={httpBusy || !httpDirty}>
+                        {getLabel("httpApply", "Apply & Restart")}
+                    </button>
+                </div>
+
+                <div class="http-form">
+                    <label class="http-field">
+                        <input type="checkbox" checked={httpSettings.enabled} on:change={onHttpAutoStartChange} />
+                        {getLabel("httpAutoStart", "Auto-start with SiYuan")}
+                    </label>
+
+                    <label class="http-field">
+                        <span class="http-label">Host</span>
+                        <input type="text" class="b3-text-field" bind:value={httpSettings.host} on:input={markHttpDirty} placeholder="127.0.0.1" />
+                    </label>
+
+                    <label class="http-field">
+                        <span class="http-label">Port</span>
+                        <input type="number" class="b3-text-field" bind:value={httpSettings.port} on:input={markHttpDirty} min="1" max="65535" />
+                    </label>
+
+                    <label class="http-field">
+                        <input type="checkbox" checked={httpSettings.authEnabled} on:change={onHttpAuthChange} />
+                        {getLabel("httpEnableAuth", "Require Bearer token")}
+                    </label>
+
+                    {#if httpSettings.authEnabled}
+                        <div class="http-field http-token-row">
+                            <span class="http-label">Token</span>
+                            <input type="text" class="b3-text-field http-token-input" readonly value={httpSettings.token} />
+                            <button class="b3-button b3-button--outline" on:click={() => copyText(httpSettings.token)}>{getLabel("httpCopy", "Copy")}</button>
+                            <button class="b3-button b3-button--outline" on:click={regenerateToken}>{getLabel("httpRegenerate", "Regenerate")}</button>
+                        </div>
+                    {/if}
+                </div>
+
+                {#if httpSettings.host !== "127.0.0.1" && httpSettings.host !== "localhost" && !httpSettings.authEnabled}
+                    <div class="http-warning">{getLabel("httpWarnExposedNoAuth", "⚠️ Bound to a non-loopback address with auth disabled. Other devices on the network can access your SiYuan workspace.")}</div>
+                {/if}
+
+                <details class="http-snippet">
+                    <summary>{getLabel("httpClientSnippet", "Client config snippet (direct HTTP)")}</summary>
+                    <pre>{generateClientSnippet(httpSettings, "direct")}</pre>
+                    <button class="b3-button b3-button--outline" on:click={() => copyText(generateClientSnippet(httpSettings, "direct"))}>{getLabel("httpCopy", "Copy")}</button>
+                </details>
+
+                <details class="http-snippet">
+                    <summary>{getLabel("httpClientSnippetRemote", "Client config snippet (mcp-remote bridge)")}</summary>
+                    <pre>{generateClientSnippet(httpSettings, "remote")}</pre>
+                    <button class="b3-button b3-button--outline" on:click={() => copyText(generateClientSnippet(httpSettings, "remote"))}>{getLabel("httpCopy", "Copy")}</button>
+                </details>
+
+                <details class="http-snippet">
+                    <summary>{getLabel("httpRecentLogs", "Recent server logs")}</summary>
+                    <pre class="http-log-box">{httpRecentLogs.length ? httpRecentLogs.join("\n") : getLabel("httpNoLogs", "(no logs yet)")}</pre>
+                </details>
+            </div>
+        </SettingPanel>
         <SettingPanel group={permGroupLabel} settingItems={permItems} display={focusGroup === permGroupLabel} on:changed={onChanged} />
-        <SettingPanel group={groups[1]} settingItems={notebookItems} display={focusGroup === groups[1]} on:changed={onChanged} />
-        <SettingPanel group={groups[2]} settingItems={documentItems} display={focusGroup === groups[2]} on:changed={onChanged} />
-        <SettingPanel group={groups[3]} settingItems={blockItems} display={focusGroup === groups[3]} on:changed={onChanged} />
-        <SettingPanel group={groups[4]} settingItems={avItems} display={focusGroup === groups[4]} on:changed={onChanged} />
-        <SettingPanel group={groups[5]} settingItems={fileItems} display={focusGroup === groups[5]} on:changed={onChanged} />
-        <SettingPanel group={groups[6]} settingItems={searchItems} display={focusGroup === groups[6]} on:changed={onChanged} />
-        <SettingPanel group={groups[7]} settingItems={tagItems} display={focusGroup === groups[7]} on:changed={onChanged} />
-        <SettingPanel group={groups[8]} settingItems={systemItems} display={focusGroup === groups[8]} on:changed={onChanged} />
-        <SettingPanel group={groups[9]} settingItems={flashcardItems} display={focusGroup === groups[9]} on:changed={onChanged} />
+        <SettingPanel group={groups[2]} settingItems={notebookItems} display={focusGroup === groups[2]} on:changed={onChanged} />
+        <SettingPanel group={groups[3]} settingItems={documentItems} display={focusGroup === groups[3]} on:changed={onChanged} />
+        <SettingPanel group={groups[4]} settingItems={blockItems} display={focusGroup === groups[4]} on:changed={onChanged} />
+        <SettingPanel group={groups[5]} settingItems={avItems} display={focusGroup === groups[5]} on:changed={onChanged} />
+        <SettingPanel group={groups[6]} settingItems={fileItems} display={focusGroup === groups[6]} on:changed={onChanged} />
+        <SettingPanel group={groups[7]} settingItems={searchItems} display={focusGroup === groups[7]} on:changed={onChanged} />
+        <SettingPanel group={groups[8]} settingItems={tagItems} display={focusGroup === groups[8]} on:changed={onChanged} />
+        <SettingPanel group={groups[9]} settingItems={systemItems} display={focusGroup === groups[9]} on:changed={onChanged} />
+        <SettingPanel group={groups[10]} settingItems={flashcardItems} display={focusGroup === groups[10]} on:changed={onChanged} />
         <SettingPanel group={puppyGroupLabel} settingItems={puppyItems} display={focusGroup === puppyGroupLabel} on:changed={onChanged} />
         <SettingPanel group={userRulesGroupLabel} settingItems={userRulesItems} display={focusGroup === userRulesGroupLabel} on:changed={onChanged} />
     </div>
@@ -636,5 +849,107 @@
         overflow-y: auto;
         overflow-x: hidden;
         scroll-behavior: smooth;
+    }
+
+    .http-server-section {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        font-size: 13px;
+
+        .http-status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .http-status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--b3-theme-error, #d33);
+            display: inline-block;
+        }
+
+        .http-status-dot.running {
+            background: var(--b3-theme-success, #3b3);
+        }
+
+        .http-status-text code {
+            background: var(--b3-theme-surface);
+            padding: 1px 6px;
+            border-radius: 3px;
+        }
+
+        .http-error {
+            color: var(--b3-theme-error, #d33);
+        }
+
+        .http-warning {
+            padding: 8px 12px;
+            background: var(--b3-card-warning-background, rgba(255, 180, 0, 0.12));
+            border-left: 3px solid var(--b3-theme-warning, #e0a000);
+            border-radius: 3px;
+            color: var(--b3-card-warning-color, inherit);
+        }
+
+        .http-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .http-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .http-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .http-label {
+            min-width: 60px;
+        }
+
+        .http-token-row {
+            .http-token-input {
+                flex: 1;
+                min-width: 240px;
+                font-family: monospace;
+                font-size: 12px;
+            }
+        }
+
+        .http-snippet {
+            background: var(--b3-theme-surface);
+            border-radius: 4px;
+            padding: 8px 12px;
+
+            summary {
+                cursor: pointer;
+                user-select: none;
+            }
+
+            pre {
+                margin: 8px 0;
+                padding: 8px;
+                background: var(--b3-theme-background);
+                border-radius: 3px;
+                overflow: auto;
+                max-height: 200px;
+                font-size: 12px;
+            }
+        }
+
+        .http-log-box {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
     }
 </style>

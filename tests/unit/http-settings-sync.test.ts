@@ -1,0 +1,124 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('siyuan', () => ({
+    Plugin: class {},
+    showMessage: vi.fn(),
+    Dialog: class {},
+}), { virtual: true });
+
+vi.mock('@/setting/mcp-config.svelte', () => ({
+    default: class {
+        $destroy() {}
+    },
+}));
+
+vi.mock('@/components/ToolPuppy.svelte', () => ({
+    default: class {
+        constructor(_: unknown) {}
+        $set(_: unknown) {}
+        $destroy() {}
+    },
+}));
+
+import SiyuanMCP from '@/index';
+import type { HttpServerSettings } from '@/setting/tool-config-storage';
+
+describe('HTTP settings sync', () => {
+    let plugin: SiyuanMCP;
+    let saveData: ReturnType<typeof vi.fn>;
+    let launcherStart: ReturnType<typeof vi.fn>;
+    let launcherStop: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        plugin = new SiyuanMCP();
+        saveData = vi.fn().mockResolvedValue(undefined);
+        launcherStart = vi.fn().mockResolvedValue(undefined);
+        launcherStop = vi.fn().mockResolvedValue(undefined);
+
+        Object.assign(plugin, { saveData });
+        plugin.httpLauncher = {
+            start: launcherStart,
+            stop: launcherStop,
+            getStatus: vi.fn(() => ({ running: false, host: '127.0.0.1', port: 36806 })),
+        } as any;
+
+        (globalThis as any).window = {
+            siyuan: {
+                config: {
+                    api: { token: 'siyuan-token' },
+                },
+            },
+        };
+    });
+
+    it('syncs settings into plugin state before start', async () => {
+        const next: HttpServerSettings = {
+            enabled: false,
+            host: '127.0.0.1',
+            port: 39000,
+            token: '12345678-token',
+            authEnabled: true,
+        };
+
+        await plugin.setHttpServerSettings(next);
+        await plugin.startHttpServer();
+
+        expect(plugin.httpSettings.port).toBe(39000);
+        expect(saveData).toHaveBeenCalledWith('mcpHttpSettings', expect.objectContaining({ port: 39000 }));
+        expect(launcherStart).toHaveBeenCalledWith(expect.objectContaining({
+            host: '127.0.0.1',
+            port: 39000,
+            token: '12345678-token',
+            siyuanToken: 'siyuan-token',
+        }));
+    });
+
+    it('restarts running server with updated settings', async () => {
+        const getStatus = vi.fn(() => ({ running: true, host: '127.0.0.1', port: 36806 }));
+        plugin.httpLauncher = {
+            start: launcherStart,
+            stop: launcherStop,
+            getStatus,
+        } as any;
+
+        const next: HttpServerSettings = {
+            enabled: false,
+            host: '0.0.0.0',
+            port: 39001,
+            token: 'updated-token',
+            authEnabled: false,
+        };
+
+        await plugin.updateHttpServerSettings(next);
+
+        expect(launcherStop).toHaveBeenCalledTimes(1);
+        expect(plugin.httpSettings).toEqual(expect.objectContaining({
+            host: '0.0.0.0',
+            port: 39001,
+            authEnabled: false,
+        }));
+        expect(launcherStart).toHaveBeenCalledWith(expect.objectContaining({
+            host: '0.0.0.0',
+            port: 39001,
+            token: undefined,
+        }));
+    });
+
+    it('starts stopped server when auto-start is enabled in new settings', async () => {
+        const next: HttpServerSettings = {
+            enabled: true,
+            host: '127.0.0.1',
+            port: 39002,
+            token: 'another-token',
+            authEnabled: true,
+        };
+
+        await plugin.updateHttpServerSettings(next);
+
+        expect(launcherStop).not.toHaveBeenCalled();
+        expect(launcherStart).toHaveBeenCalledWith(expect.objectContaining({
+            port: 39002,
+            token: 'another-token',
+        }));
+    });
+});

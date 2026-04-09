@@ -567,7 +567,10 @@ const handleSetIcon: DocumentActionHandler = async ({ client, permMgr, rawArgs }
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
     if (denied) return denied;
     await attributeApi.setBlockAttrs(client, parsed.id, { icon: parsed.icon });
-    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, icon: parsed.icon }), [{ type: 'reloadProtyle', id: context.documentId }]);
+    return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, icon: parsed.icon }), [
+        { type: 'reloadProtyle', id: context.documentId },
+        { type: 'reloadFiletree' },
+    ]);
 };
 
 const handleSetCover: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {

@@ -4,6 +4,8 @@ import { CallToolRequestSchema, ErrorCode, ListResourcesRequestSchema, ListResou
 import fs from 'fs';
 import path from 'path';
 
+import { startHttpMcpServer } from './http-transport';
+
 import { SiYuanClient } from '../api/client';
 import { buildDefaultToolConfig, formatDangerousActionsList, normalizeToolConfig, TOOL_CATEGORIES, type ToolCategory, type ToolConfig } from './config';
 import { PermissionManager } from './permissions';
@@ -344,6 +346,14 @@ export async function createSiYuanServer(): Promise<Server> {
     return server;
 }
 
+function parseTransportMode(): 'stdio' | 'http' {
+    if (typeof process === 'undefined') return 'stdio';
+    if (Array.isArray(process.argv) && process.argv.includes('--http')) return 'http';
+    const env = (process.env.SIYUAN_MCP_TRANSPORT ?? '').toLowerCase();
+    if (env === 'http') return 'http';
+    return 'stdio';
+}
+
 async function main() {
     process.on('uncaughtException', (error) => {
         console.error('[MCP] Uncaught exception:', error instanceof Error ? error.message : String(error));
@@ -352,6 +362,23 @@ async function main() {
     process.on('unhandledRejection', (reason) => {
         console.error('[MCP] Unhandled rejection:', reason instanceof Error ? reason.message : String(reason));
     });
+
+    const mode = parseTransportMode();
+
+    if (mode === 'http') {
+        const portRaw = process.env.SIYUAN_MCP_PORT ?? '36806';
+        const port = parseInt(portRaw, 10);
+        if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+            throw new Error(`[MCP] invalid SIYUAN_MCP_PORT: ${portRaw}`);
+        }
+        await startHttpMcpServer({
+            host: process.env.SIYUAN_MCP_HOST ?? '127.0.0.1',
+            port,
+            token: process.env.SIYUAN_MCP_TOKEN || undefined,
+            path: process.env.SIYUAN_MCP_PATH || '/mcp',
+        });
+        return;
+    }
 
     const server = await createSiYuanServer();
     const transport = new StdioServerTransport(

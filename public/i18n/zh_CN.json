@@ -335,6 +335,21 @@
     "system_action_get_current_time": "获取当前时间",
     "desc_system_action_get_current_time": "获取当前系统时间。",
 
+    "flashcard_tool_title": "闪卡工具",
+    "flashcard_tool_desc": "向 MCP 客户端暴露聚合后的闪卡复习与卡包操作。",
+    "flashcard_action_list_cards": "列出卡片",
+    "desc_flashcard_action_list_cards": "按范围列出到期闪卡，并可按 due/new/old 过滤。",
+    "flashcard_action_get_decks": "获取卡包",
+    "desc_flashcard_action_get_decks": "列出可用闪卡卡包，便于发现 deck ID。",
+    "flashcard_action_review_card": "复习卡片",
+    "desc_flashcard_action_review_card": "提交一次闪卡复习评分。",
+    "flashcard_action_skip_review_card": "跳过复习卡片",
+    "desc_flashcard_action_skip_review_card": "在复习流程中跳过当前闪卡。",
+    "flashcard_action_add_card": "添加卡片",
+    "desc_flashcard_action_add_card": "将已有块加入某个闪卡卡包。",
+    "flashcard_action_remove_card": "移除卡片",
+    "desc_flashcard_action_remove_card": "将已有块从某个闪卡卡包中移除。",
+
     "mascot_tool_title": "猫猫工具",
     "mascot_tool_desc": "向 MCP 客户端暴露聚合后的猫猫工具。",
     "mascot_action_get_balance": "查看余额",
@@ -347,6 +362,7 @@
     "notebook_action_set_icon": "设置笔记本图标",
     "desc_notebook_action_set_icon": "设置笔记本的图标。",
 
+    "Flashcards": "闪卡",
     "Mascot": "猫猫",
     "User Rules": "用户规则",
     "user_rules_title": "用户自定义规则",
@@ -369,5 +385,26 @@
 
     "mcpConfigSaved": "✅ MCP Tools 配置已保存到文件",
     "mcpConfigSavedBackup": "⚠️ MCP Tools 配置已保存（仅备份）",
-    "mcpConfigReset": "🔄 MCP Tools 配置已重置为默认值"
+    "mcpConfigReset": "🔄 MCP Tools 配置已重置为默认值",
+
+    "httpServerTitle": "HTTP 远程服务",
+    "httpStart": "启动",
+    "httpStop": "停止",
+    "httpApply": "保存并重启",
+    "httpAutoStart": "随思源自动启动",
+    "httpEnableAuth": "启用 Bearer Token 鉴权",
+    "httpCopy": "复制",
+    "httpRegenerate": "重新生成",
+    "httpStatusRunning": "运行中",
+    "httpStatusStopped": "已停止",
+    "httpClientSnippet": "客户端配置示例（直连 HTTP）",
+    "httpClientSnippetRemote": "客户端配置示例（mcp-remote 桥接）",
+    "httpRecentLogs": "最近服务日志",
+    "httpNoLogs": "（暂无日志）",
+    "httpUnsupported": "HTTP 服务仅在思源桌面端可用。",
+    "httpStartError": "HTTP 服务出错",
+    "httpSettingsSaved": "✅ HTTP 服务设置已保存",
+    "httpWarnExposedNoAuth": "⚠️ 当前绑定的不是回环地址且未开启鉴权，局域网内任何设备都可能访问你的思源工作区。",
+    "copySuccess": "✅ 已复制到剪贴板",
+    "copyFailed": "复制到剪贴板失败"
 }

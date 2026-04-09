@@ -35,7 +35,7 @@
 - `flashcard`
 - `mascot`
 
-每个 tool 通过必填的 `action` 字段分派具体操作，不再直接暴露大量 endpoint 风格的 tool 名。
+每个 tool 通过必填的 `action` 字段分派具体操作。
 
 ## 快速开始
 
@@ -58,95 +58,121 @@ pnpm run build
 pnpm run make-link
 ```
 
-### 2. 先理解要填什么
+### 2. 连接方式
 
-绝大多数支持 MCP 的 Agent 客户端，本质上都要你提供这三样东西：
+插件支持两种连接方式，**推荐使用 HTTP 模式**——配置更简单，支持多个客户端同时连接，也能从 WSL / Docker / 远程机器直接访问。
 
-- `command`：怎么启动这个 MCP Server
-- `args`：启动时传什么参数
-- `env`：要不要补环境变量，比如思源地址和 token
+---
 
-这个插件对应的最小配置通常就是：
+#### 方式一：HTTP 模式（推荐）
+
+HTTP 模式下，插件在思源内部托管一个 HTTP MCP Server，**思源 API token 自动透传**，你只需把客户端的配置 URL 和 Bearer token 填好即可，无需手动配置路径或环境变量。
+
+**第一步：启动 HTTP Server**
+
+1. 打开「插件 → siyuan-plugins-mcp-sisyphus → 设置 → 🌐 HTTP Server」
+2. 默认 `Host: 127.0.0.1`、`Port: 36806`
+   - 如果 agent 在 WSL / Docker / 远程机器上，把 Host 改成 `0.0.0.0`
+3. 保持「Require Bearer token」开启，token 已自动生成
+4. 点「Start」，状态变为「Running」
+5. 勾选「随思源自动启动」，下次不用手动点
+
+**第二步：复制客户端配置**
+
+设置面板底部「客户端配置示例」里有两段可直接复制的 JSON：
+
+- **直连 HTTP**（Cline、Cherry Studio、Cursor、Windsurf、**Claude Code** 等原生支持 HTTP 的客户端）：
+
+  ```json
+  {
+    “mcpServers”: {
+      “siyuan”: {
+        “type”: “http”,
+        “url”: “http://127.0.0.1:36806/mcp”,
+        “headers”: { “Authorization”: “Bearer <复制设置面板里的 token>” }
+      }
+    }
+  }
+  ```
+
+  > **Claude Code 注意**：必须加 `”type”: “http”`，否则 schema 校验会失败。配置写入 `~/.claude.json` 的 `mcpServers` 字段。
+
+- **mcp-remote 桥接**（Claude Desktop 等只支持 stdio 的客户端）：
+
+  ```json
+  {
+    “mcpServers”: {
+      “siyuan”: {
+        “command”: “npx”,
+        “args”: [“mcp-remote”, “http://127.0.0.1:36806/mcp”, “--header”, “Authorization: Bearer <token>”]
+      }
+    }
+  }
+  ```
+
+> **WSL / 跨机器场景：** 把 Host 改为 `0.0.0.0`，在客户端配置里把 `127.0.0.1` 替换为 Windows 宿主机 IP（通常是 `192.168.x.x`）。绑定到非回环地址时**务必**保持 token 鉴权开启，否则同局域网任何设备都能访问你的工作区。
+
+---
+
+#### 方式二：stdio 模式（本机直连，传统方式）
+
+如果你的客户端和思源运行在同一台机器上，也可以用 stdio 方式直接启动 `mcp-server.cjs`：
 
 ```json
 {
-  "mcpServers": {
-    "siyuan": {
-      "command": "node",
-      "args": ["{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"],
-      "env": {
-        "SIYUAN_API_URL": "http://127.0.0.1:6806",
-        "SIYUAN_TOKEN": "xxxxxx"
+  “mcpServers”: {
+    “siyuan”: {
+      “command”: “node”,
+      “args”: [“{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs”],
+      “env”: {
+        “SIYUAN_API_URL”: “http://127.0.0.1:6806”,
+        “SIYUAN_TOKEN”: “xxxxxx”
       }
     }
   }
 }
 ```
 
-说明：
+- `{SIYUAN_PATH}` 替换为实际路径
+- 如果思源未开启 API 鉴权，`SIYUAN_TOKEN` 可省略
+- stdio 每次只能对应一个客户端连接
 
-- `{SIYUAN_PATH}` 替换成你的思源安装或工作环境对应路径
-- 路径中的插件目录名必须与 `plugin.json` 里的 `name` 一致，也就是 `siyuan-plugins-mcp-sisyphus`
-- 如果你的思源没有开启 API 鉴权，`SIYUAN_TOKEN` 可以省略
-- 如果开启了 API 鉴权，请到 `设置 -> 关于` 获取 API token
+---
 
-### 3. Agent mcp Siyuan 如何交互
+### 3. 第一次连接后先做什么
 
-连接时可以按下面的思路理解：
-
-1. Agent 启动这个插件生成的 `mcp-server.cjs`
-2. `mcp-server.cjs` 再去连接本地思源 API
-3. Agent 读取这个 MCP Server 暴露出来的 tools
-4. 之后你就可以直接对 Agent 说自然语言，例如“帮我搜索标题里带 Weekly 的文档”
-
-只要你的客户端支持 MCP，这个配置思路基本都一样。差别通常只在于：
-
-- 配置文件放在哪里
-- JSON 外层字段名是否略有不同
-- 修改配置后是否需要重启客户端
-
-### 4. 第一次连接后先做什么
-
-建议先让 Agent 试几个**只读、低风险**动作，确认链路通了：
+连接后建议先试几个**只读、低风险**动作确认链路通了：
 
 - “帮我查看当前思源版本”
 - “列出我的笔记本”
 - “搜索标题里包含 `project` 的文档”
 
-如果你的客户端支持展示工具调用，通常你会看到类似这些调用：
+对应工具调用：`system(action=”get_version”)`、`notebook(action=”list”)`、`document(action=”search_docs”, ...)`
 
-- `system(action="get_version")`
-- `notebook(action="list")`
-- `document(action="search_docs", ...)`
+### 4. 给 Agent 的自然语言示例
 
-### 5. 给 Agent 的自然语言示例
-
-日常更常见的是直接对 Agent 说：
-
-- “帮我修改文档（复制文档id）的图标”
-- “列出我所有笔记本。”
-- “帮我搜索标题里带 `Weekly` 的文档。”
-- “在这篇文档（复制文档id）末尾追加一条待办：明天发周报。”
-- “查一下这个块有哪些反向链接。”
-
-如果你是手动调试 MCP，再往下看本文后面的 action 和 JSON 说明即可。
+- “帮我修改这篇文档的图标”
+- “列出我所有笔记本”
+- “帮我搜索标题里带 `Weekly` 的文档”
+- “在这篇文档末尾追加一条待办：明天发周报”
+- “查一下这个块有哪些反向链接”
 
 ## 常见问题
 
 ### Agent 看不到工具
 
-- 设置路径确认路径指向的是 `mcp-server.cjs`
-- 修改 MCP 配置后，重启 Agent 客户端再试
+- HTTP 模式：确认设置面板状态为「Running」，token 和 URL 是否粘贴正确
+- stdio 模式：确认路径指向 `mcp-server.cjs`，修改配置后重启客户端
 
 ### 能连上，但调用失败
 
-- 检查 `SIYUAN_API_URL` 是否正确，默认常见是 `http://127.0.0.1:6806`
-- 如果思源启用了 API 鉴权，检查 `SIYUAN_TOKEN` 是否正确
-- 检查目标笔记本权限是否被设成了 `r` 或 `none`
+- HTTP 模式：思源 API token 由插件自动透传，无需手动配置；检查思源是否正常运行
+- stdio 模式：检查 `SIYUAN_API_URL` 和 `SIYUAN_TOKEN` 是否正确
+- 检查目标笔记本权限是否被设为了 `r` 或 `none`
 
 ### 为什么某些操作前会让我确认
 
-这是插件的安全设计，不是报错。像删除、移动、上传本地文件、修改权限这类高风险动作，默认都应该先征得用户同意。
+这是插件的安全设计，不是报错。删除、移动、上传本地文件、修改权限等高风险动作，默认都需要先征得用户同意。
 
 # 插件细节
 
@@ -240,6 +266,7 @@ Additional actions: remove, move, list_tree ...    → 读取 siyuan://help/acti
 
 ## 版本时间线
 
+- `v0.2.0`：新增 HTTP Streamable 远程传输模式，支持多客户端并发连接，插件设置面板内置一键启停 UI，解决 WSL / 远程 agent 无法走 stdio 的问题
 - `v0.1.17`：新增 `flashcard` 闪卡聚合 tool（含 7 个 action），重构双语文档并补充快速入门指南，工具总数扩展至 10 个
 - `v0.1.16`：新增 UI 自动刷新机制，优化数据库块操作语义与 ID 处理，补充调试脚本与回归测试
 - `v0.1.15`：厘清 AV 行 ID / value ID / 源块 ID 语义，补强 `mAsset` 与数据库复制写链路，并同步刷新 mascot 与回归测试文档

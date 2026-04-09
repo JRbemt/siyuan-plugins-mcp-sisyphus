@@ -17,6 +17,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      'siyuan': path.resolve(__dirname, './tests/mocks/siyuan.ts'),
     },
   },
 });

@@ -132,7 +132,7 @@ export default defineConfig({
                 ])
             ],
 
-            external: ["siyuan", "process", "path", "fs", "node:path", "node:fs"],
+            external: ["siyuan", "process", "path", "fs", "node:path", "node:fs", "child_process", "node:child_process", "node:http", "node:crypto", "http", "crypto", "stream", "node:stream", "http2", "node:http2", "url", "node:url", "buffer", "node:buffer", "events", "node:events", "net", "node:net", "tls", "node:tls", "zlib", "node:zlib", "querystring", "node:querystring"],
 
             output: {
                 entryFileNames: (chunkInfo) => chunkInfo.name === "mcp-server" ? "mcp-server.cjs" : "[name].js",
