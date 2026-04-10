@@ -2,6 +2,8 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
+> **Latest:** `v0.2.1` — Adds dejavu data-repo snapshot management (create, diff, checkout, tag) with a dedicated sidebar UI, and improves HTTP transport concurrency safety. See full history in [CHANGELOG.md](./CHANGELOG.md).
+
 > Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenCode, Claude Code, and other AI CLI tools directly in the SiYuan sidebar.
 
 This is an MCP server plugin that **connects SiYuan Note to AI agents**. Once installed, any MCP-capable agent can treat SiYuan as a callable toolset: read notes, search documents, edit block content, work with databases, and export resources.
@@ -155,6 +157,33 @@ Corresponding tool calls: `system(action=”get_version”)`, `notebook(action=�
 
 If you are manually debugging MCP, the action tables and JSON-oriented sections below are still there.
 
+---
+
+### 5. Data Repo Snapshot Management (New in v0.2.1)
+
+The plugin now provides a **visual snapshot manager** that lets you quickly create, compare, and roll back data snapshots.
+
+**Open the snapshot panel**
+
+1. After enabling the plugin, a **[Data Repo]** button appears in the bottom-right corner of SiYuan — click it to open the sidebar
+2. The sidebar shows all snapshots with creation time, memo, size, and tags
+
+**Common operations**
+
+| Action | How to do it |
+|--------|--------------|
+| Create snapshot | Click `Create` → enter memo → confirm |
+| Compare snapshots | Select two snapshots → click `Compare` → see added/updated/removed files |
+| Checkout (restore) | Click `Checkout` on a snapshot → confirm → notebook reverts to that state |
+| Tag / Pin | Click the tag area → enter name (`📌` tag is used to prevent the snapshot from being accidentally purged) |
+| Delete tag | Click the trash icon on the tag |
+
+**Keyboard shortcuts**
+
+- `Alt + Shift + S`: Open Repo Snapshots panel
+
+> **Note:** `Checkout` replaces your current notebook state with the snapshot. High-risk operation — use with caution.
+
 ## Troubleshooting
 
 ### My agent cannot see the tools
@@ -259,27 +288,6 @@ Big result sets are capped and annotated with drill-down hints rather than retur
 | `document.get_doc` > 8 000 chars | Truncated + `get_child_blocks` block-by-block hint |
 
 **Design goals:** reduce first-call cognitive load; preserve full capability (all advanced actions remain usable); maintain backward compatibility with existing configs and tool names.
-
-## Timeline
-
-- `v0.2.0`: Adds HTTP Streamable transport with multi-client support, a one-click start/stop UI in the settings panel, and solves the WSL / remote-agent stdio problem
-- `v0.1.17`: Adds the `flashcard` aggregated tool with 7 flashcard actions, refreshes bilingual docs with a quick-start guide, and expands the tool surface to 10 tools
-- `v0.1.16`: Adds automatic UI refresh after mutations, improves AV write semantics and ID handling, and adds debugging helpers plus regression tests
-- `v0.1.15`: Clarifies AV row/value identity, adds stronger AV write semantics for `mAsset` and duplicate-block flows, and refreshes mascot plus regression docs/tests
-- `v0.1.14`: Adds an `ai-layout-guide` help resource, teaches better SiYuan layout semantics for notes, tags, bookmarks, and flashcards, and refreshes smoke coverage for the 8-tool surface
-- `v0.1.13`: Requires standard token-authenticated SiYuan requests, trims trailing slashes from `SIYUAN_API_URL`, and fixes empty-response JSON parse failures
-- `v0.1.12`: Adds the `mascot` aggregated tool, improves Docker/env-based API auth flows, and refreshes docs plus tests for the 8-tool surface
-- `v0.1.11`: Adds document cover actions, switches asset uploads to local-path flows with large-file confirmation, and refreshes docs plus tests
-- `v0.1.10`: Refines aggregated tool behavior, tightens permission/path/help details, and refreshes docs plus test coverage
-- `v0.1.9`: Expands notebook permissions to `none` / `r` / `rw` / `rwd`, improves move/export behaviors, and strengthens MCP docs and test coverage
-- `v0.1.8`: Adds notebook and document icon support and updates the aggregated MCP tool surface back to 7 tools
-- `v0.1.6`: Adds the `search` aggregated tool with full-text search, SQL queries, tag search, backlinks, and backmentions
-- `v0.1.5`: Shrinks MCP exposure to 4 aggregated tools and adds notebook-level permission guards with high-risk action confirmations
-- `v0.1.4`: Auto-generates the MCP config file on first install, so clients can connect out of the box
-- `v0.1.3`: Removes unrelated config noise and keeps the plugin focused on MCP capabilities
-- `v0.1.2`: Merges MCP tool config into one entry and adds dual-path fallback for more reliable loading
-
-See full history in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Tool Model
 

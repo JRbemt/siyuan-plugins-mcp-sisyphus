@@ -13,6 +13,13 @@ export interface HttpServerOptions {
     path?: string;
 }
 
+export interface HttpMcpServerHandle {
+    host: string;
+    port: number;
+    path: string;
+    close(): Promise<void>;
+}
+
 interface SessionEntry {
     server: Server;
     transport: StreamableHTTPServerTransport;
@@ -35,7 +42,7 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
     }
 }
 
-export async function startHttpMcpServer(opts: HttpServerOptions): Promise<void> {
+export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpMcpServerHandle> {
     const sessions = new Map<string, SessionEntry>();
     const mcpPath = opts.path ?? '/mcp';
     const sockets = new Set<Socket>();
@@ -207,4 +214,14 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<void>
         }, PARENT_WATCH_INTERVAL_MS);
         watchdogTimer.unref?.();
     }
+
+    const address = httpServer.address();
+    const port = typeof address === 'object' && address ? address.port : opts.port;
+
+    return {
+        host: opts.host,
+        port,
+        path: mcpPath,
+        close: () => shutdown('handle.close()'),
+    };
 }

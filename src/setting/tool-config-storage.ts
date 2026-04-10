@@ -99,7 +99,7 @@ function generateRandomToken(): string {
 
 export function buildDefaultHttpServerSettings(): HttpServerSettings {
     return {
-        enabled: false,
+        enabled: true,
         host: DEFAULT_HTTP_HOST,
         port: DEFAULT_HTTP_PORT,
         token: generateRandomToken(),
