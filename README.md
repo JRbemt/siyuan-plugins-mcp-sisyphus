@@ -2,7 +2,7 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-> **Latest:** `v0.2.1` — Adds dejavu data-repo snapshot management (create, diff, checkout, tag) with a dedicated sidebar UI, and improves HTTP transport concurrency safety. See full history in [CHANGELOG.md](./CHANGELOG.md).
+> **Latest:** `v0.2.2` — Improved data-repo snapshot sidebar with enhanced UI for creating, comparing, and rolling back snapshots. See full history in [CHANGELOG.md](./CHANGELOG.md).
 
 > Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenCode, Claude Code, and other AI CLI tools directly in the SiYuan sidebar.
 
